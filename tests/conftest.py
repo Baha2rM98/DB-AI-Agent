@@ -6,10 +6,11 @@ from typing import Dict, Any, List
 from sqlalchemy import text
 from fastapi.testclient import TestClient
 
-# Import application modules
-from app.database.db_connector import DatabaseConnector
-from app.agent.db_agent_connector import DBAgentConnector, ConversationSession
-from app.api.routes import app, get_db_agent
+from app.main import app
+from app.api.dependencies import get_database_gateway, get_query_service
+from app.application.dto.query_result import QueryResultDTO
+from app.application.services.query_service import QueryService
+from app.infrastructure.database.sqlalchemy_database import SQLAlchemyDatabaseGateway
 
 
 @pytest.fixture(scope="session")
@@ -41,7 +42,7 @@ def test_connection_string(test_db_config):
 @pytest.fixture
 def mock_db_connector():
     """Mock database connector for unit tests."""
-    mock_connector = Mock(spec=DatabaseConnector)
+    mock_connector = Mock(spec=SQLAlchemyDatabaseGateway)
     mock_connector.test_connection.return_value = True
     mock_connector.get_table_names.return_value = ["actor", "film", "customer", "rental"]
     mock_connector.get_table_schema.return_value = {
@@ -125,62 +126,41 @@ def mock_agent_result():
 
 
 @pytest.fixture
-def conversation_session():
-    """Create a test conversation session."""
-    session = ConversationSession("test_session")
-    return session
-
-
-@pytest.fixture
-def mock_db_agent_connector(mock_db_connector):
-    """Mock DB agent connector with properly configured database schema."""
-    # Create a mock that behaves like DBAgentConnector but with mocked dependencies
-    mock_agent = Mock(spec=DBAgentConnector)
-
-    # Setup the db_connector attribute
-    mock_agent.db_connector = mock_db_connector
-
-    # Setup database_schema as a dictionary, not a Mock
-    mock_agent.database_schema = {
-        "actor": {
-            "table_name": "actor",
-            "columns": [
-                {"name": "actor_id", "type": "INTEGER", "nullable": False},
-                {"name": "first_name", "type": "VARCHAR(45)", "nullable": False},
-                {"name": "last_name", "type": "VARCHAR(45)", "nullable": False}
-            ],
-            "primary_keys": ["actor_id"],
-            "foreign_keys": [],
-            "indices": []
-        }
-    }
-
-    # Setup conversation sessions
-    mock_agent.conversation_sessions = {}
-
-    # Setup method return values
-    mock_agent.execute_natural_language_query.return_value = {
-        "success": True,
-        "agent_response": "Test response",
-        "data": [{"actor_id": 1, "first_name": "John"}],
-        "affected_rows": 1,
-        "session_id": "test_session"
-    }
-
-    mock_agent.get_session_info.return_value = {
+def mock_query_service():
+    """Mock the application query service used by the API layer."""
+    mock_service = Mock(spec=QueryService)
+    mock_service.execute_query.return_value = QueryResultDTO(
+        success=True,
+        message="Found 2 actors",
+        agent_response="Found 2 actors",
+        thread_id="test_session",
+        data=[
+            {"actor_id": 1, "first_name": "John"},
+            {"actor_id": 2, "first_name": "Jane"},
+        ],
+        affected_rows=2,
+        context_info={
+            "session_id": "test_session",
+            "created_at": "2024-01-01T12:00:00",
+            "last_activity": "2024-01-01T12:30:00",
+            "query_count": 1,
+            "last_table": "actor",
+            "last_operation": "select",
+            "context_summary": "Test session",
+        },
+    )
+    mock_service.get_active_threads.return_value = ["test_session"]
+    mock_service.get_thread_info.return_value = {
         "session_id": "test_session",
         "created_at": "2024-01-01T12:00:00",
         "last_activity": "2024-01-01T12:30:00",
         "query_count": 1,
         "last_table": "actor",
         "last_operation": "select",
-        "context_summary": "Test session"
+        "context_summary": "Test session",
     }
-
-    mock_agent.get_active_sessions.return_value = ["test_session"]
-    mock_agent.clear_session.return_value = True
-
-    return mock_agent
+    mock_service.clear_thread.return_value = True
+    return mock_service
 
 
 @pytest.fixture
@@ -190,14 +170,18 @@ def test_client():
 
 
 @pytest.fixture
-def mock_agent_dependency(mock_db_agent_connector):
-    """Mock the DB agent dependency for API testing."""
+def mock_service_dependency(mock_query_service, mock_db_connector):
+    """Override API dependencies with test doubles."""
 
-    def override_get_db_agent():
-        return mock_db_agent_connector
+    def override_get_query_service():
+        return mock_query_service
 
-    app.dependency_overrides[get_db_agent] = override_get_db_agent
-    yield mock_db_agent_connector
+    def override_get_database_gateway():
+        return mock_db_connector
+
+    app.dependency_overrides[get_query_service] = override_get_query_service
+    app.dependency_overrides[get_database_gateway] = override_get_database_gateway
+    yield mock_query_service
     app.dependency_overrides.clear()
 
 
