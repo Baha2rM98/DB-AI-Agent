@@ -10,9 +10,11 @@ langchain
 google-generativeai
 langchain-google-genai
 langgraph
+langgraph-checkpoint-sqlite
+langgraph-checkpoint-postgres
 
 # Database
-psycopg2-binary
+psycopg
 
 # Testing
 pytest
