@@ -1,8 +1,11 @@
-from typing import Dict, List, Any
+import logging
+from typing import Any, Dict, List, Optional
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class AgentState(BaseModel):
@@ -15,7 +18,7 @@ class AgentState(BaseModel):
     error: str = ""
 
 
-def initialize_agent():
+def initialize_agent(checkpointer: Optional[Any] = None, model_name: str = "gemini-1.5-pro"):
     """Initialize the LangGraph agent with tools and memory management.
 
     This function creates a LangGraph workflow for handling natural language
@@ -27,7 +30,7 @@ def initialize_agent():
 
     # Initialize the language model with Gemini
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",
+        model=model_name,
         temperature=0,
         convert_system_message_to_human=True  # Important for Gemini compatibility
     )
@@ -331,30 +334,35 @@ def initialize_agent():
     # Set the entrypoint
     workflow.set_entry_point("understand_query")
 
-    return workflow.compile()
+    return workflow.compile(checkpointer=checkpointer)
 
 
-def query_database(query: str, context_schema: Dict[str, Any]) -> Dict[str, Any]:
+def query_database(
+    query: str,
+    context_schema: Dict[str, Any],
+    thread_id: Optional[str] = None,
+    checkpointer: Optional[Any] = None,
+    model_name: str = "gemini-1.5-pro",
+) -> Dict[str, Any]:
     """Execute a query against the database using the LangGraph agent."""
 
     database_info = {k: context_schema[k] for k in ["database_name", "tables", "summary"]}
 
     try:
-        print("Initializing LangGraph agent...")
-        agent = initialize_agent()
-
-        print(f"Query: {query}")
-        print(f"Provided context schema: {context_schema}")
+        logger.info("Initializing LangGraph agent for thread %s", thread_id or "default")
+        agent = initialize_agent(checkpointer=checkpointer, model_name=model_name)
 
         initial_state = AgentState(
             query=query,
             database_info=database_info
         )
 
-        print("Invoking agent...")
-        result = agent.invoke(initial_state)
-        print(f"Agent result type: {type(result)}")
-        print(f"Agent result: {result}")
+        invoke_config = None
+        if thread_id:
+            invoke_config = {"configurable": {"thread_id": thread_id}}
+
+        result = agent.invoke(initial_state, config=invoke_config)
+        logger.debug("Agent result type: %s", type(result))
 
         # Ensure we always return a dictionary
         if isinstance(result, dict):
@@ -367,7 +375,7 @@ def query_database(query: str, context_schema: Dict[str, Any]) -> Dict[str, Any]
                 "execution_details": result.execution_result if hasattr(result, "execution_result") else {}
             }
         else:
-            print(f"WARNING: Unexpected result type from agent: {type(result)}")
+            logger.warning("Unexpected result type from agent: %s", type(result))
             return {
                 "response": "The agent could not process your query properly.",
                 "context": {},
@@ -376,8 +384,8 @@ def query_database(query: str, context_schema: Dict[str, Any]) -> Dict[str, Any]
 
     except Exception as e:
         import traceback
-        print(f"Error in query_database: {e}")
-        print(traceback.format_exc())
+        logger.error("Error in query_database: %s", e)
+        logger.debug(traceback.format_exc())
 
         # Return error result instead of None
         return {

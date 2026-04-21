@@ -4,9 +4,9 @@ from functools import lru_cache
 
 from app.application.services.query_service import QueryService
 from app.application.services.schema_service import SchemaService
-from app.infrastructure.agent.legacy_db_agent import LegacyDBAgent
 from app.infrastructure.config.settings import Settings
 from app.infrastructure.database.sqlalchemy_database import SQLAlchemyDatabaseGateway
+from app.infrastructure.langgraph.persistent_agent import PersistentLangGraphAgent
 
 
 @lru_cache
@@ -29,17 +29,12 @@ def get_schema_service() -> SchemaService:
 
 
 @lru_cache
-def get_agent() -> LegacyDBAgent:
-    """Create the current query agent adapter."""
-    settings = get_settings()
-    return LegacyDBAgent(settings.database_url)
-
-
-@lru_cache
 def get_query_service() -> QueryService:
     """Create the main query orchestration service."""
+    settings = get_settings()
+    schema_service = get_schema_service()
     return QueryService(
-        agent=get_agent(),
+        agent=PersistentLangGraphAgent(settings=settings, schema_service=schema_service),
         database_gateway=get_database_gateway(),
-        schema_service=get_schema_service(),
+        schema_service=schema_service,
     )

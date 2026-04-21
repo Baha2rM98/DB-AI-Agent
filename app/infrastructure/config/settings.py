@@ -15,6 +15,10 @@ class Settings:
     log_level: str
     database_url: str
     google_api_key: str
+    llm_model: str
+    checkpointer_backend: str
+    checkpointer_database_url: str
+    checkpointer_sqlite_path: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -35,4 +39,8 @@ class Settings:
                 f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
             ),
             google_api_key=os.getenv("GOOGLE_API_KEY", ""),
+            llm_model=os.getenv("LLM_MODEL", "gemini-1.5-pro"),
+            checkpointer_backend=os.getenv("CHECKPOINTER_BACKEND", "memory"),
+            checkpointer_database_url=os.getenv("CHECKPOINTER_DATABASE_URL", ""),
+            checkpointer_sqlite_path=os.getenv("CHECKPOINTER_SQLITE_PATH", "checkpoints.db"),
         )
