@@ -1,0 +1,20 @@
+# Python cache and virtualenv artifacts should not be copied into the image.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Git and editor metadata are not needed inside the runtime image.
+.git/
+.idea/
+.vscode/
+
+# Local environment files should stay outside Docker build context.
+.env
+
+# Test output and logs are runtime artifacts.
+app.log
