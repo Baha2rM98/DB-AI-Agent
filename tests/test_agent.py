@@ -45,7 +45,7 @@ class TestAgentState:
 class TestLangGraphAgent:
     """Test cases for LangGraph agent functionality."""
 
-    @patch('app.agent.langraph_agent.ChatGoogleGenerativeAI')
+    @patch('app.agent.langgraph_agent.ChatGoogleGenerativeAI')
     def test_initialize_agent(self, mock_gemini):
         """Test agent initialization."""
         mock_llm = Mock()
@@ -60,20 +60,24 @@ class TestLangGraphAgent:
             convert_system_message_to_human=True
         )
 
-    @patch('app.agent.langraph_agent.initialize_agent')
+    @patch('app.agent.langgraph_agent.initialize_agent')
     def test_query_database_success(self, mock_init_agent, mock_agent_result):
         """Test successful query_database execution."""
         mock_agent = Mock()
         mock_agent.invoke.return_value = mock_agent_result
         mock_init_agent.return_value = mock_agent
 
-        database_info = {"actor": {"columns": []}}
+        database_info = {
+            "database_name": "test_db",
+            "tables": {"actor": {"columns": []}},
+            "summary": {},
+        }
         result = query_database("Show me all actors", database_info)
 
         assert isinstance(result, dict)
         assert "response" in result
 
-    @patch('app.agent.langraph_agent.initialize_agent')
+    @patch('app.agent.langgraph_agent.initialize_agent')
     def test_query_database_with_agent_state_result(self, mock_init_agent):
         """Test query_database when agent returns AgentState object."""
         mock_agent_state = AgentState(
@@ -93,7 +97,7 @@ class TestLangGraphAgent:
         assert result["context"] == {"test": "context"}
         assert result["execution_details"] == {"success": True}
 
-    @patch('app.agent.langraph_agent.initialize_agent')
+    @patch('app.agent.langgraph_agent.initialize_agent')
     def test_query_database_exception_handling(self, mock_init_agent):
         """Test query_database exception handling."""
         mock_agent = Mock()
@@ -106,7 +110,7 @@ class TestLangGraphAgent:
         assert "error" in result["context"]
         assert "Test error" in result["response"]
 
-    @patch('app.agent.langraph_agent.initialize_agent')
+    @patch('app.agent.langgraph_agent.initialize_agent')
     def test_query_database_unexpected_result_type(self, mock_init_agent):
         """Test query_database with unexpected result type."""
         mock_agent = Mock()
@@ -123,7 +127,7 @@ class TestLangGraphAgent:
 class TestAgentWorkflowNodes:
     """Test individual workflow nodes."""
 
-    @patch('app.agent.langraph_agent.ChatGoogleGenerativeAI')
+    @patch('app.agent.langgraph_agent.ChatGoogleGenerativeAI')
     def test_understand_query_node(self, mock_gemini):
         """Test the understand_query workflow node."""
         # Setup mock LLM
@@ -146,7 +150,7 @@ class TestAgentWorkflowNodes:
         # This tests the workflow initialization
         assert agent is not None
 
-    @patch('app.agent.langraph_agent.ChatGoogleGenerativeAI')
+    @patch('app.agent.langgraph_agent.ChatGoogleGenerativeAI')
     def test_plan_execution_node(self, mock_gemini):
         """Test the plan_execution workflow node."""
         mock_llm = Mock()
@@ -160,7 +164,7 @@ class TestAgentWorkflowNodes:
         agent = initialize_agent()
         assert agent is not None
 
-    @patch('app.agent.langraph_agent.ChatGoogleGenerativeAI')
+    @patch('app.agent.langgraph_agent.ChatGoogleGenerativeAI')
     def test_execute_plan_node(self, mock_gemini):
         """Test the execute_plan workflow node."""
         mock_llm = Mock()
@@ -173,7 +177,7 @@ class TestAgentWorkflowNodes:
         agent = initialize_agent()
         assert agent is not None
 
-    @patch('app.agent.langraph_agent.ChatGoogleGenerativeAI')
+    @patch('app.agent.langgraph_agent.ChatGoogleGenerativeAI')
     def test_formulate_response_node(self, mock_gemini):
         """Test the formulate_response workflow node."""
         mock_llm = Mock()
@@ -186,7 +190,7 @@ class TestAgentWorkflowNodes:
         agent = initialize_agent()
         assert agent is not None
 
-    @patch('app.agent.langraph_agent.ChatGoogleGenerativeAI')
+    @patch('app.agent.langgraph_agent.ChatGoogleGenerativeAI')
     def test_handle_error_node(self, mock_gemini):
         """Test the handle_error workflow node."""
         mock_llm = Mock()
@@ -254,7 +258,7 @@ class TestAgentStateMachine:
 class TestAgentPerformance:
     """Performance tests for the agent."""
 
-    @patch('app.agent.langraph_agent.initialize_agent')
+    @patch('app.agent.langgraph_agent.initialize_agent')
     def test_agent_response_time(self, mock_init_agent):
         """Test that agent responds within reasonable time."""
         import time
@@ -271,7 +275,7 @@ class TestAgentPerformance:
         assert (end_time - start_time) < 5.0
         assert result is not None
 
-    @patch('app.agent.langraph_agent.initialize_agent')
+    @patch('app.agent.langgraph_agent.initialize_agent')
     def test_agent_memory_usage(self, mock_init_agent):
         """Test agent memory usage doesn't grow excessively."""
         mock_agent = Mock()

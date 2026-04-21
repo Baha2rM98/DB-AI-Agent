@@ -29,7 +29,7 @@ def create_checkpointer(settings: Settings) -> Any:
             ) from exc
 
         sqlite_path = settings.checkpointer_sqlite_path
-        saver = SqliteSaver.from_conn_string(sqlite_path)
+        saver = _materialize_saver(SqliteSaver.from_conn_string(sqlite_path))
         if hasattr(saver, "setup"):
             saver.setup()
         return saver
@@ -47,9 +47,27 @@ def create_checkpointer(settings: Settings) -> Any:
                 "CHECKPOINTER_DATABASE_URL must be set when CHECKPOINTER_BACKEND=postgres."
             )
 
-        saver = PostgresSaver.from_conn_string(settings.checkpointer_database_url)
+        saver = _materialize_saver(
+            PostgresSaver.from_conn_string(settings.checkpointer_database_url)
+        )
         if hasattr(saver, "setup"):
             saver.setup()
         return saver
 
     raise RuntimeError(f"Unsupported checkpointer backend: {settings.checkpointer_backend}")
+
+
+def _materialize_saver(candidate: Any) -> Any:
+    """Enter saver context managers and keep them alive for app lifetime.
+
+    LangGraph saver factories such as `PostgresSaver.from_conn_string()` return
+    generator-backed context managers in current versions. The API layer needs a
+    concrete saver instance, so this helper enters the context and stores the
+    manager on the resulting saver object to prevent premature cleanup.
+    """
+    if hasattr(candidate, "__enter__") and hasattr(candidate, "__exit__"):
+        context_manager = candidate
+        saver = context_manager.__enter__()
+        setattr(saver, "_managed_context", context_manager)
+        return saver
+    return candidate

@@ -29,3 +29,16 @@ class QueryResponse(BaseModel):
     thread_id: Optional[str] = None
     session_id: Optional[str] = None
     context_info: Optional[Dict[str, Any]] = None
+
+
+class ThreadInfoResponse(BaseModel):
+    """Compatibility response model for thread and legacy session metadata."""
+
+    thread_id: str
+    session_id: Optional[str] = None
+    created_at: str
+    last_activity: str
+    query_count: int
+    last_table: Optional[str] = None
+    last_operation: Optional[str] = None
+    context_summary: str

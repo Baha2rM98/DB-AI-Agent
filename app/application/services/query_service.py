@@ -26,11 +26,13 @@ class QueryService:
         """Execute a natural-language query and normalize the result payload."""
         result = self._agent.execute_query(query=query, thread_id=thread_id)
         context_info = self._build_context_info(thread_id)
+        agent_response = result.get("agent_response") or result.get("response", "")
+        message = result.get("message") or agent_response
 
         return QueryResultDTO(
             success=result.get("success", False),
-            message=result.get("message", ""),
-            agent_response=result.get("agent_response", ""),
+            message=message,
+            agent_response=agent_response,
             data=result.get("data"),
             affected_rows=result.get("affected_rows"),
             thread_id=thread_id,
@@ -59,5 +61,5 @@ class QueryService:
 
     def _build_context_info(self, thread_id: str) -> Dict[str, Any]:
         """Fetch contextual information for the current conversation thread."""
-        session_info = self._agent.get_thread_info(thread_id)
-        return session_info if session_info.get("session_id") else {}
+        thread_info = self._agent.get_thread_info(thread_id)
+        return thread_info if thread_info.get("thread_id") or thread_info.get("session_id") else {}

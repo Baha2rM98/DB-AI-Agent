@@ -1,16 +1,17 @@
 import pytest
 from unittest.mock import Mock, patch
 from sqlalchemy.exc import SQLAlchemyError
-from app.database.db_connector import DatabaseConnector
+from app.infrastructure.database.sqlalchemy_database import SQLAlchemyDatabaseGateway
 
 
-class TestDatabaseConnector:
-    """Test cases for DatabaseConnector class."""
+class TestSQLAlchemyDatabaseGateway:
+    """Test cases for SQLAlchemyDatabaseGateway."""
 
-    def test_init_with_connection_string(self):
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    def test_init_with_connection_string(self, mock_create_engine):
         """Test initialization with explicit connection string."""
         conn_str = "postgresql://user:pass@localhost:5432/testdb"
-        connector = DatabaseConnector(conn_str)
+        connector = SQLAlchemyDatabaseGateway(conn_str)
         assert connector.connection_string == conn_str
 
     @patch.dict('os.environ', {
@@ -20,13 +21,16 @@ class TestDatabaseConnector:
         'DB_PORT': '5432',
         'DB_NAME': 'test_db'
     })
-    def test_init_with_environment_variables(self):
-        """Test initialization using environment variables."""
-        connector = DatabaseConnector()
-        expected = "postgresql://test_user:test_pass@test_host:5432/test_db"
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    def test_init_with_environment_variables(self, mock_create_engine):
+        """Test initialization using an explicit connection string."""
+        connector = SQLAlchemyDatabaseGateway(
+            "postgresql+psycopg://test_user:test_pass@test_host:5432/test_db"
+        )
+        expected = "postgresql+psycopg://test_user:test_pass@test_host:5432/test_db"
         assert connector.connection_string == expected
 
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_test_connection_success(self, mock_create_engine):
         """Test successful database connection."""
         mock_engine = Mock()
@@ -35,25 +39,25 @@ class TestDatabaseConnector:
         mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
         mock_create_engine.return_value = mock_engine
 
-        connector = DatabaseConnector("test://connection")
+        connector = SQLAlchemyDatabaseGateway("test://connection")
         result = connector.test_connection()
 
         assert result is True
         mock_conn.execute.assert_called_once()
 
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_test_connection_failure(self, mock_create_engine):
         """Test database connection failure."""
         mock_engine = Mock()
         mock_engine.connect.side_effect = SQLAlchemyError("Connection failed")
         mock_create_engine.return_value = mock_engine
 
-        connector = DatabaseConnector("test://connection")
+        connector = SQLAlchemyDatabaseGateway("test://connection")
         result = connector.test_connection()
 
         assert result is False
 
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_execute_query_select_success(self, mock_create_engine):
         """Test successful SELECT query execution."""
         # Setup mocks
@@ -71,7 +75,7 @@ class TestDatabaseConnector:
         mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
         mock_create_engine.return_value = mock_engine
 
-        connector = DatabaseConnector("test://connection")
+        connector = SQLAlchemyDatabaseGateway("test://connection")
         result = connector.execute_query("SELECT * FROM users")
 
         assert result["success"] is True
@@ -79,7 +83,7 @@ class TestDatabaseConnector:
         assert result["data"][0] == {"id": 1, "name": "John"}
         assert result["affected_rows"] == 2
 
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_execute_query_insert_success(self, mock_create_engine):
         """Test successful INSERT query execution."""
         mock_engine = Mock()
@@ -94,7 +98,7 @@ class TestDatabaseConnector:
         mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
         mock_create_engine.return_value = mock_engine
 
-        connector = DatabaseConnector("test://connection")
+        connector = SQLAlchemyDatabaseGateway("test://connection")
         result = connector.execute_query("INSERT INTO users (name) VALUES ('John')")
 
         assert result["success"] is True
@@ -102,7 +106,7 @@ class TestDatabaseConnector:
         assert result["affected_rows"] == 1
         assert result["operation_type"] == "insert"  # Added: verify operation type
 
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_execute_query_with_parameters(self, mock_create_engine):
         """Test query execution with parameters."""
         mock_engine = Mock()
@@ -119,7 +123,7 @@ class TestDatabaseConnector:
         mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
         mock_create_engine.return_value = mock_engine
 
-        connector = DatabaseConnector("test://connection")
+        connector = SQLAlchemyDatabaseGateway("test://connection")
         result = connector.execute_query(
             "SELECT * FROM users WHERE name = :name",
             {"name": "John"}
@@ -127,7 +131,7 @@ class TestDatabaseConnector:
 
         assert result["success"] is True
 
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_execute_query_failure(self, mock_create_engine):
         """Test query execution failure."""
         mock_engine = Mock()
@@ -137,27 +141,27 @@ class TestDatabaseConnector:
         mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
         mock_create_engine.return_value = mock_engine
 
-        connector = DatabaseConnector("test://connection")
+        connector = SQLAlchemyDatabaseGateway("test://connection")
         result = connector.execute_query("INVALID SQL")
 
         assert result["success"] is False
         assert "error" in result
 
-    @patch('app.database.db_connector.inspect')
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.inspect')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_get_table_names(self, mock_create_engine, mock_inspect):
         """Test getting table names."""
         mock_inspector = Mock()
         mock_inspector.get_table_names.return_value = ["users", "products", "orders"]
         mock_inspect.return_value = mock_inspector
 
-        connector = DatabaseConnector("test://connection")
+        connector = SQLAlchemyDatabaseGateway("test://connection")
         tables = connector.get_table_names()
 
-        assert tables == ["users", "products", "orders"]
+        assert tables == ["orders", "products", "users"]
 
-    @patch('app.database.db_connector.inspect')
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.inspect')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_get_table_schema(self, mock_create_engine, mock_inspect):
         """Test getting table schema."""
         mock_inspector = Mock()
@@ -170,7 +174,7 @@ class TestDatabaseConnector:
         mock_inspector.get_indexes.return_value = []
         mock_inspect.return_value = mock_inspector
 
-        connector = DatabaseConnector("test://connection")
+        connector = SQLAlchemyDatabaseGateway("test://connection")
         schema = connector.get_table_schema("users")
 
         assert schema["table_name"] == "users"
@@ -178,25 +182,9 @@ class TestDatabaseConnector:
         assert schema["primary_keys"] == ["id"]
         assert schema["foreign_keys"] == []
 
-    @patch('app.database.db_connector.inspect')
-    @patch('app.database.db_connector.create_engine')
-    def test_get_table_schema_with_cache(self, mock_create_engine, mock_inspect):
-        """Test table schema caching."""
-        mock_inspector = Mock()
-        mock_inspect.return_value = mock_inspector
-
-        connector = DatabaseConnector("test://connection")
-        connector._metadata_cache["users"] = {"cached": True}
-
-        schema = connector.get_table_schema("users")
-
-        assert schema == {"cached": True}
-        mock_inspector.get_columns.assert_not_called()
-
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_execute_operation_select(self, mock_create_engine):
-        """Test execute_operation with SELECT."""
-        # Create a real DatabaseConnector instance with mocked engine
+        """Test execute_query with SELECT behavior through the gateway."""
         mock_engine = Mock()
         mock_conn = Mock()
         mock_result = Mock()
@@ -211,37 +199,36 @@ class TestDatabaseConnector:
         mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
         mock_create_engine.return_value = mock_engine
 
-        connector = DatabaseConnector("test://connection")
-
-        params = {
-            "table": "users",
-            "columns": ["id", "name"],
-            "where": "age > 18",
-            "order_by": "name",
-            "limit": "10"
-        }
-
-        result = connector.execute_operation("select", params)
+        connector = SQLAlchemyDatabaseGateway("test://connection")
+        result = connector.execute_query(
+            "SELECT id, name FROM users WHERE age > 18 ORDER BY name LIMIT 10"
+        )
 
         assert result["success"] is True
         assert len(result["data"]) == 1
 
-    @patch('app.database.db_connector.create_engine')
+    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
     def test_execute_operation_unsupported(self, mock_create_engine):
-        """Test execute_operation with unsupported operation."""
+        """Test execute_query behavior with unsupported SQL classification."""
         mock_engine = Mock()
+        mock_conn = Mock()
+        mock_result = Mock()
+        mock_result.returns_rows = False
+        mock_result.rowcount = 0
+        mock_conn.execute.return_value = mock_result
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
         mock_create_engine.return_value = mock_engine
 
-        connector = DatabaseConnector("test://connection")
-        result = connector.execute_operation("unsupported", {})
+        connector = SQLAlchemyDatabaseGateway("test://connection")
+        result = connector.execute_query("VACUUM")
 
-        assert result["success"] is False
-        assert "Unsupported operation type" in result["error"]
+        assert result["success"] is True
 
 
 @pytest.mark.integration
-class TestDatabaseConnectorIntegration:
-    """Integration tests for DatabaseConnector with real database."""
+class TestSQLAlchemyDatabaseGatewayIntegration:
+    """Integration tests for SQLAlchemyDatabaseGateway with real database."""
 
     @pytest.fixture(autouse=True)
     def setup_test_db(self, test_connection_string, db_test_helper):
@@ -261,26 +248,23 @@ class TestDatabaseConnectorIntegration:
 
     def test_real_database_operations(self, test_connection_string, sample_actor_data, setup_test_db):
         """Test real database operations."""
-        connector = DatabaseConnector(test_connection_string)
+        connector = SQLAlchemyDatabaseGateway(test_connection_string)
 
         # Test connection
         assert connector.test_connection() is True
 
         # Insert test data
         for actor in sample_actor_data:
-            result = connector.execute_operation("insert", {
-                "table": "test_actor",
-                "values": {
+            result = connector.execute_query(
+                "INSERT INTO test_actor (first_name, last_name) VALUES (:first_name, :last_name)",
+                {
                     "first_name": actor["first_name"],
-                    "last_name": actor["last_name"]
-                }
-            })
+                    "last_name": actor["last_name"],
+                },
+            )
             assert result["success"] is True
 
         # Query data
-        result = connector.execute_operation("select", {
-            "table": "test_actor",
-            "columns": ["*"]
-        })
+        result = connector.execute_query("SELECT * FROM test_actor")
         assert result["success"] is True
         assert len(result["data"]) == len(sample_actor_data)

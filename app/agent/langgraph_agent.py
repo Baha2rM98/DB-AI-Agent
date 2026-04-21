@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -198,8 +198,8 @@ def initialize_agent(checkpointer: Optional[Any] = None, model_name: str = "gemi
                 else:
                     state.current_plan.append("unknown")
 
-            # Set placeholder execution result
-            # The actual execution happens in DBAgentConnector
+            # Set placeholder execution result.
+            # The actual SQL execution is handled by the application/database layer.
             state.execution_result = {
                 "success": True,
                 "operation": state.current_plan[0] if state.current_plan else "unknown",
@@ -346,7 +346,11 @@ def query_database(
 ) -> Dict[str, Any]:
     """Execute a query against the database using the LangGraph agent."""
 
-    database_info = {k: context_schema[k] for k in ["database_name", "tables", "summary"]}
+    database_info = {
+        "database_name": context_schema.get("database_name", "unknown"),
+        "tables": context_schema.get("tables", {}),
+        "summary": context_schema.get("summary", {}),
+    }
 
     try:
         logger.info("Initializing LangGraph agent for thread %s", thread_id or "default")

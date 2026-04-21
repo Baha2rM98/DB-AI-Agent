@@ -36,7 +36,7 @@ class Settings:
             port=int(os.getenv("PORT", "8000")),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             database_url=(
-                f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+                f"postgresql+psycopg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
             ),
             google_api_key=os.getenv("GOOGLE_API_KEY", ""),
             llm_model=os.getenv("LLM_MODEL", "gemini-1.5-pro"),
