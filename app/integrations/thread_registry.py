@@ -1,8 +1,8 @@
-"""Thread metadata storage for the compatibility API surface.
+"""Thread metadata storage for the temporary compatibility API surface.
 
-This module keeps the temporary thread/session metadata concerns separate from
-the persistent agent itself. LangGraph owns the durable conversational state,
-while this registry tracks lightweight operational metadata exposed by the API.
+LangGraph owns durable conversational state. This registry only keeps the
+small amount of API-facing metadata we still expose while thread management is
+being finalized.
 """
 
 from __future__ import annotations

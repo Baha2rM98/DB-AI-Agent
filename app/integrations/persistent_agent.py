@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from app.agent.langgraph_agent import query_database
-from app.application.services.schema_service import SchemaService
-from app.infrastructure.config.settings import Settings
-from app.infrastructure.langgraph.checkpoint_factory import create_checkpointer
-from app.infrastructure.langgraph.thread_registry import ThreadRegistry
+from app.integrations.checkpoint_factory import create_checkpointer
+from app.integrations.settings import Settings
+from app.integrations.thread_registry import ThreadRegistry
+from app.services.schema_service import SchemaService
 
 
 class PersistentLangGraphAgent:

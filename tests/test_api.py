@@ -1,5 +1,5 @@
 from unittest.mock import Mock
-from app.application.dto.query_result import QueryResultDTO
+from app.services.query_service import QueryResult
 
 
 class TestAPIRoutes:
@@ -39,7 +39,7 @@ class TestAPIRoutes:
 
     def test_process_query_success(self, test_client, mock_service_dependency):
         """Test successful query processing."""
-        mock_service_dependency.execute_query.return_value = QueryResultDTO(
+        mock_service_dependency.execute_query.return_value = QueryResult(
             success=True,
             message="Found 2 actors",
             agent_response="Found 2 actors",

@@ -15,6 +15,10 @@ restart:
 rebuild:
 	$(COMPOSE) up -d --build
 
+recreate:
+	$(COMPOSE) down -v
+	$(COMPOSE) up -d --build --force-recreate
+
 logs:
 	$(COMPOSE) logs -f app
 

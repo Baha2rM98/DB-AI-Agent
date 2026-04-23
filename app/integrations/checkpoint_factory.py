@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.infrastructure.config.settings import Settings
+from app.integrations.settings import Settings
 
 
 def create_checkpointer(settings: Settings) -> Any:

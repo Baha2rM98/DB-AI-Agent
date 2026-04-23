@@ -8,9 +8,8 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.api.dependencies import get_database_gateway, get_query_service
-from app.application.dto.query_result import QueryResultDTO
-from app.application.services.query_service import QueryService
-from app.infrastructure.database.sqlalchemy_database import SQLAlchemyDatabaseGateway
+from app.integrations.database import SQLAlchemyDatabaseGateway
+from app.services.query_service import QueryResult, QueryService
 
 
 @pytest.fixture(scope="session")
@@ -129,7 +128,7 @@ def mock_agent_result():
 def mock_query_service():
     """Mock the application query service used by the API layer."""
     mock_service = Mock(spec=QueryService)
-    mock_service.execute_query.return_value = QueryResultDTO(
+    mock_service.execute_query.return_value = QueryResult(
         success=True,
         message="Found 2 actors",
         agent_response="Found 2 actors",

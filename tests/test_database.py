@@ -1,13 +1,13 @@
 import pytest
 from unittest.mock import Mock, patch
 from sqlalchemy.exc import SQLAlchemyError
-from app.infrastructure.database.sqlalchemy_database import SQLAlchemyDatabaseGateway
+from app.integrations.database import SQLAlchemyDatabaseGateway
 
 
 class TestSQLAlchemyDatabaseGateway:
     """Test cases for SQLAlchemyDatabaseGateway."""
 
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_init_with_connection_string(self, mock_create_engine):
         """Test initialization with explicit connection string."""
         conn_str = "postgresql://user:pass@localhost:5432/testdb"
@@ -21,7 +21,7 @@ class TestSQLAlchemyDatabaseGateway:
         'DB_PORT': '5432',
         'DB_NAME': 'test_db'
     })
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_init_with_environment_variables(self, mock_create_engine):
         """Test initialization using an explicit connection string."""
         connector = SQLAlchemyDatabaseGateway(
@@ -30,7 +30,7 @@ class TestSQLAlchemyDatabaseGateway:
         expected = "postgresql+psycopg://test_user:test_pass@test_host:5432/test_db"
         assert connector.connection_string == expected
 
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_test_connection_success(self, mock_create_engine):
         """Test successful database connection."""
         mock_engine = Mock()
@@ -45,7 +45,7 @@ class TestSQLAlchemyDatabaseGateway:
         assert result is True
         mock_conn.execute.assert_called_once()
 
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_test_connection_failure(self, mock_create_engine):
         """Test database connection failure."""
         mock_engine = Mock()
@@ -57,7 +57,7 @@ class TestSQLAlchemyDatabaseGateway:
 
         assert result is False
 
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_execute_query_select_success(self, mock_create_engine):
         """Test successful SELECT query execution."""
         # Setup mocks
@@ -83,7 +83,7 @@ class TestSQLAlchemyDatabaseGateway:
         assert result["data"][0] == {"id": 1, "name": "John"}
         assert result["affected_rows"] == 2
 
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_execute_query_insert_success(self, mock_create_engine):
         """Test successful INSERT query execution."""
         mock_engine = Mock()
@@ -106,7 +106,7 @@ class TestSQLAlchemyDatabaseGateway:
         assert result["affected_rows"] == 1
         assert result["operation_type"] == "insert"  # Added: verify operation type
 
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_execute_query_with_parameters(self, mock_create_engine):
         """Test query execution with parameters."""
         mock_engine = Mock()
@@ -131,7 +131,7 @@ class TestSQLAlchemyDatabaseGateway:
 
         assert result["success"] is True
 
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_execute_query_failure(self, mock_create_engine):
         """Test query execution failure."""
         mock_engine = Mock()
@@ -147,8 +147,8 @@ class TestSQLAlchemyDatabaseGateway:
         assert result["success"] is False
         assert "error" in result
 
-    @patch('app.infrastructure.database.sqlalchemy_database.inspect')
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.inspect')
+    @patch('app.integrations.database.create_engine')
     def test_get_table_names(self, mock_create_engine, mock_inspect):
         """Test getting table names."""
         mock_inspector = Mock()
@@ -160,8 +160,8 @@ class TestSQLAlchemyDatabaseGateway:
 
         assert tables == ["orders", "products", "users"]
 
-    @patch('app.infrastructure.database.sqlalchemy_database.inspect')
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.inspect')
+    @patch('app.integrations.database.create_engine')
     def test_get_table_schema(self, mock_create_engine, mock_inspect):
         """Test getting table schema."""
         mock_inspector = Mock()
@@ -182,7 +182,7 @@ class TestSQLAlchemyDatabaseGateway:
         assert schema["primary_keys"] == ["id"]
         assert schema["foreign_keys"] == []
 
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_execute_operation_select(self, mock_create_engine):
         """Test execute_query with SELECT behavior through the gateway."""
         mock_engine = Mock()
@@ -207,7 +207,7 @@ class TestSQLAlchemyDatabaseGateway:
         assert result["success"] is True
         assert len(result["data"]) == 1
 
-    @patch('app.infrastructure.database.sqlalchemy_database.create_engine')
+    @patch('app.integrations.database.create_engine')
     def test_execute_operation_unsupported(self, mock_create_engine):
         """Test execute_query behavior with unsupported SQL classification."""
         mock_engine = Mock()

@@ -1,4 +1,8 @@
-"""SQLAlchemy-backed database gateway implementation."""
+"""SQLAlchemy-backed database integration.
+
+This module is the single place where the application talks directly to
+SQLAlchemy for connectivity, raw query execution, and schema inspection.
+"""
 
 import logging
 import re

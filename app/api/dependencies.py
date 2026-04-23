@@ -1,12 +1,12 @@
-"""Dependency providers for the FastAPI application."""
+"""Dependency providers for the simplified FastAPI application."""
 
 from functools import lru_cache
 
-from app.application.services.query_service import QueryService
-from app.application.services.schema_service import SchemaService
-from app.infrastructure.config.settings import Settings
-from app.infrastructure.database.sqlalchemy_database import SQLAlchemyDatabaseGateway
-from app.infrastructure.langgraph.persistent_agent import PersistentLangGraphAgent
+from app.integrations.database import SQLAlchemyDatabaseGateway
+from app.integrations.persistent_agent import PersistentLangGraphAgent
+from app.integrations.settings import Settings
+from app.services.query_service import QueryService
+from app.services.schema_service import SchemaService
 
 
 @lru_cache

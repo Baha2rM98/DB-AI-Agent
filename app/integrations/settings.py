@@ -1,4 +1,4 @@
-"""Typed application settings loaded from the environment."""
+"""Typed application settings loaded from environment variables."""
 
 import os
 from dataclasses import dataclass
@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    """Runtime configuration for the API and infrastructure layer."""
+    """Runtime configuration for the API and integration layer."""
 
     app_name: str
     app_version: str

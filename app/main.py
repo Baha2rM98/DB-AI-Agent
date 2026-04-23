@@ -5,9 +5,8 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from app.api.routers.health import router as health_router
-from app.api.routers.query import router as query_router
-from app.infrastructure.config.settings import Settings
+from app.api.routes import router as api_router
+from app.integrations.settings import Settings
 
 load_dotenv()
 
@@ -27,8 +26,7 @@ def create_app() -> FastAPI:
         description="API for natural language database interactions using LangGraph.",
         version=settings.app_version,
     )
-    app.include_router(health_router)
-    app.include_router(query_router)
+    app.include_router(api_router)
     return app
 
 
