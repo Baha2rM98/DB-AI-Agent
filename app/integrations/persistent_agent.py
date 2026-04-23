@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict
 
-from app.agent.langgraph_agent import query_database_async
+from app.agent.langgraph_agent import query_database
 from app.integrations.checkpoint_factory import create_checkpointer
 from app.integrations.settings import Settings
 from app.integrations.thread_registry import ThreadRegistry
@@ -28,7 +28,7 @@ class PersistentLangGraphAgent:
         """Execute a natural-language query using a persisted LangGraph thread."""
         schema = await self._schema_service.get_database_schema()
         checkpointer = await self._get_checkpointer()
-        result = await query_database_async(
+        result = await query_database(
             query=query,
             context_schema=schema,
             thread_id=thread_id,
