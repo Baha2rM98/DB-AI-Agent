@@ -121,4 +121,4 @@ class QueryService:
     def _build_context_info(self, thread_id: str) -> Dict[str, Any]:
         """Fetch contextual information for the current conversation thread."""
         thread_info = self._agent.get_thread_info(thread_id)
-        return thread_info if thread_info.get("thread_id") or thread_info.get("session_id") else {}
+        return thread_info if thread_info.get("thread_id") else {}

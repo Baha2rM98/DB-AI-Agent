@@ -139,7 +139,7 @@ def mock_query_service():
         ],
         affected_rows=2,
         context_info={
-            "session_id": "test_session",
+            "thread_id": "test_session",
             "created_at": "2024-01-01T12:00:00",
             "last_activity": "2024-01-01T12:30:00",
             "query_count": 1,
@@ -150,7 +150,7 @@ def mock_query_service():
     )
     mock_service.get_active_threads.return_value = ["test_session"]
     mock_service.get_thread_info.return_value = {
-        "session_id": "test_session",
+        "thread_id": "test_session",
         "created_at": "2024-01-01T12:00:00",
         "last_activity": "2024-01-01T12:30:00",
         "query_count": 1,

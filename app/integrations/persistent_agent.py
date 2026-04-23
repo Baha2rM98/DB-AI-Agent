@@ -35,14 +35,13 @@ class PersistentLangGraphAgent:
         return result
 
     def get_thread_info(self, thread_id: str) -> Dict[str, Any]:
-        """Return compatibility metadata for a persisted thread."""
+        """Return metadata for a persisted thread."""
         record = self._thread_registry.get(thread_id)
         if record is None:
-            return {"error": f"Session {thread_id} not found"}
+            return {"error": f"Thread {thread_id} not found"}
 
         return {
             "thread_id": record.thread_id,
-            "session_id": record.thread_id,
             "created_at": record.created_at.isoformat(),
             "last_activity": record.last_activity.isoformat(),
             "query_count": record.query_count,
@@ -59,7 +58,7 @@ class PersistentLangGraphAgent:
         return self._thread_registry.list_ids()
 
     def clear_thread(self, thread_id: str) -> bool:
-        """Forget compatibility metadata for a thread.
+        """Forget metadata for a thread.
 
         This does not currently delete checkpoints from the backing saver. That
         will be handled in a later cleanup round once we add saver-specific

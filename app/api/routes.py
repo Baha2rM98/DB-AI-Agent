@@ -1,7 +1,5 @@
 """API routes for the simplified application structure."""
 
-from typing import List
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import get_database_gateway, get_query_service
@@ -40,7 +38,7 @@ def health_check(
     return HealthResponse(
         status="connected",
         database_connection="ok",
-        active_sessions=len(query_service.get_active_threads()),
+        active_threads=len(query_service.get_active_threads()),
     )
 
 
@@ -65,52 +63,14 @@ def process_query(
         data=result.data,
         affected_rows=result.affected_rows,
         thread_id=result.thread_id,
-        session_id=result.thread_id,
         context_info=result.context_info,
     )
 
 
-@router.get("/sessions", response_model=List[str], tags=["query"])
-def get_active_sessions(
-    query_service: QueryService = Depends(get_query_service),
-) -> List[str]:
-    """Return active legacy session identifiers.
-
-    This endpoint is kept for backward compatibility and mirrors `/threads`.
-    """
-    return query_service.get_active_threads()
-
-
-@router.get("/sessions/{session_id}", response_model=ThreadInfoResponse, tags=["query"])
-def get_session_info(
-    session_id: str,
-    query_service: QueryService = Depends(get_query_service),
-) -> ThreadInfoResponse:
-    """Return legacy session metadata.
-
-    This endpoint is kept for backward compatibility and mirrors `/threads/{thread_id}`.
-    """
-    session_info = query_service.get_thread_info(session_id)
-    if "error" in session_info:
-        raise HTTPException(status_code=404, detail=session_info["error"])
-    return _build_thread_response(session_info)
-
-
-@router.delete("/sessions/{session_id}", tags=["query"])
-def clear_session(
-    session_id: str,
-    query_service: QueryService = Depends(get_query_service),
-) -> dict:
-    """Delete a legacy session by identifier."""
-    if not query_service.clear_thread(session_id):
-        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-    return {"message": f"Session {session_id} cleared successfully"}
-
-
-@router.get("/threads", response_model=List[str], tags=["query"])
+@router.get("/threads", response_model=list[str], tags=["query"])
 def get_active_threads(
     query_service: QueryService = Depends(get_query_service),
-) -> List[str]:
+) -> list[str]:
     """Return the active conversation thread identifiers."""
     return query_service.get_active_threads()
 
@@ -139,10 +99,9 @@ def clear_thread(
 
 
 def _build_thread_response(thread_info: dict) -> ThreadInfoResponse:
-    """Normalize thread metadata for both thread and session endpoints."""
+    """Normalize thread metadata for the API response."""
     return ThreadInfoResponse(
-        thread_id=thread_info.get("thread_id", thread_info["session_id"]),
-        session_id=thread_info.get("session_id", thread_info.get("thread_id")),
+        thread_id=thread_info["thread_id"],
         created_at=thread_info["created_at"],
         last_activity=thread_info["last_activity"],
         query_count=thread_info["query_count"],

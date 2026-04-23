@@ -25,7 +25,7 @@ class TestAPIRoutes:
         data = response.json()
         assert data["status"] == "connected"
         assert data["database_connection"] == "ok"
-        assert data["active_sessions"] == 1
+        assert data["active_threads"] == 1
 
     def test_health_check_failure(self, test_client, mock_service_dependency, mock_db_connector):
         """Test health check with database connection failure."""
@@ -49,7 +49,7 @@ class TestAPIRoutes:
             ],
             affected_rows=2,
             thread_id="test_session",
-            context_info={"session_id": "test_session", "query_count": 1},
+            context_info={"thread_id": "test_session", "query_count": 1},
         )
 
         request_data = {
@@ -65,13 +65,12 @@ class TestAPIRoutes:
         assert data["message"] == "Found 2 actors"
         assert len(data["data"]) == 2
         assert data["thread_id"] == "test_session"
-        assert data["session_id"] == "test_session"
 
     def test_process_query_empty_query(self, test_client, mock_service_dependency):
         """Test processing empty query."""
         request_data = {
             "query": "",
-            "session_id": "test_session"
+            "thread_id": "test_session"
         }
 
         response = test_client.post("/query", json=request_data)
@@ -79,25 +78,25 @@ class TestAPIRoutes:
         assert response.status_code == 400
         assert "Query cannot be empty" in response.json()["detail"]
 
-    def test_get_active_sessions(self, test_client, mock_service_dependency):
-        """Test getting active sessions."""
-        response = test_client.get("/sessions")
+    def test_get_active_threads(self, test_client, mock_service_dependency):
+        """Test getting active threads."""
+        response = test_client.get("/threads")
 
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
 
-    def test_get_session_info_success(self, test_client, mock_service_dependency):
-        """Test getting session information."""
-        response = test_client.get("/sessions/test_session")
+    def test_get_thread_info_success(self, test_client, mock_service_dependency):
+        """Test getting thread information."""
+        response = test_client.get("/threads/test_session")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["session_id"] == "test_session"
+        assert data["thread_id"] == "test_session"
 
-    def test_clear_session_success(self, test_client, mock_service_dependency):
-        """Test successful session clearing."""
-        response = test_client.delete("/sessions/test_session")
+    def test_clear_thread_success(self, test_client, mock_service_dependency):
+        """Test successful thread clearing."""
+        response = test_client.delete("/threads/test_session")
 
         assert response.status_code == 200
         data = response.json()
@@ -110,7 +109,7 @@ class TestRequestValidation:
     def test_query_request_validation(self, test_client, mock_service_dependency):
         """Test QueryRequest model validation."""
         # Missing query field
-        response = test_client.post("/query", json={"session_id": "test"})
+        response = test_client.post("/query", json={"thread_id": "test"})
         assert response.status_code == 422
 
         # Invalid JSON

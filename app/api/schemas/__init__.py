@@ -18,7 +18,7 @@ class HealthResponse(BaseModel):
 
     status: str
     database_connection: str
-    active_sessions: int = 0
+    active_threads: int = 0
 
 
 class QueryRequest(BaseModel):
@@ -26,12 +26,11 @@ class QueryRequest(BaseModel):
 
     query: str
     thread_id: Optional[str] = None
-    session_id: Optional[str] = None
 
     @property
     def effective_thread_id(self) -> str:
         """Resolve the canonical thread identifier from supported inputs."""
-        return self.thread_id or self.session_id or "default"
+        return self.thread_id or "default"
 
 
 class QueryResponse(BaseModel):
@@ -43,15 +42,13 @@ class QueryResponse(BaseModel):
     data: Optional[List[Dict[str, Any]]] = None
     affected_rows: Optional[int] = None
     thread_id: Optional[str] = None
-    session_id: Optional[str] = None
     context_info: Optional[Dict[str, Any]] = None
 
 
 class ThreadInfoResponse(BaseModel):
-    """Compatibility response model for thread and legacy session metadata."""
+    """Response model for persisted conversation thread metadata."""
 
     thread_id: str
-    session_id: Optional[str] = None
     created_at: str
     last_activity: str
     query_count: int
