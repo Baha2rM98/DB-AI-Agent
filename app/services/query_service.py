@@ -26,6 +26,9 @@ class AgentClient(Protocol):
     def clear_thread(self, thread_id: str) -> bool:
         """Delete a conversation thread if it exists."""
 
+    def record_thread_activity(self, thread_id: str, operation: str | None) -> None:
+        """Record non-agent thread activity for deterministic service responses."""
+
 
 class DatabaseClient(Protocol):
     """Describe the database operations required by the service layer."""
@@ -83,6 +86,10 @@ class QueryService:
 
     def execute_query(self, query: str, thread_id: str) -> QueryResult:
         """Execute a natural-language query and normalize the result payload."""
+        schema_result = self._try_handle_schema_query(query=query, thread_id=thread_id)
+        if schema_result is not None:
+            return schema_result
+
         result = self._agent.execute_query(query=query, thread_id=thread_id)
         context_info = self._build_context_info(thread_id)
         agent_response = result.get("agent_response") or result.get("response", "")
@@ -122,3 +129,46 @@ class QueryService:
         """Fetch contextual information for the current conversation thread."""
         thread_info = self._agent.get_thread_info(thread_id)
         return thread_info if thread_info.get("thread_id") else {}
+
+    def _try_handle_schema_query(self, query: str, thread_id: str) -> QueryResult | None:
+        """Answer simple schema questions directly without invoking the LLM."""
+        schema_query = self._schema_service.detect_schema_query(query)
+        if schema_query is None:
+            return None
+
+        if schema_query.operation == "list_tables":
+            tables = self._schema_service.list_tables()
+            self._agent.record_thread_activity(thread_id, "schema_list")
+            message = f"I found {len(tables)} tables in the database."
+            return QueryResult(
+                success=True,
+                message=message,
+                agent_response=message,
+                data=[{"table_name": table_name} for table_name in tables],
+                affected_rows=len(tables),
+                thread_id=thread_id,
+                context_info=self._build_context_info(thread_id),
+            )
+
+        if schema_query.operation == "describe_table" and schema_query.table_name:
+            table_details = self._schema_service.get_table_details(schema_query.table_name)
+            if table_details is None:
+                return None
+
+            self._agent.record_thread_activity(thread_id, "schema_describe")
+            columns = table_details.get("columns", [])
+            message = (
+                f"I found the schema for table '{schema_query.table_name}' "
+                f"with {len(columns)} columns."
+            )
+            return QueryResult(
+                success=True,
+                message=message,
+                agent_response=message,
+                data=[table_details],
+                affected_rows=len(columns),
+                thread_id=thread_id,
+                context_info=self._build_context_info(thread_id),
+            )
+
+        return None

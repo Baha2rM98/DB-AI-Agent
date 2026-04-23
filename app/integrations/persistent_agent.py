@@ -66,6 +66,10 @@ class PersistentLangGraphAgent:
         """
         return self._thread_registry.clear(thread_id)
 
+    def record_thread_activity(self, thread_id: str, operation: str | None) -> None:
+        """Record deterministic service-side activity for a thread."""
+        self._thread_registry.record_activity(thread_id, operation)
+
     @staticmethod
     def _extract_operation(result: Dict[str, Any]) -> str | None:
         """Infer the SQL operation from the result payload."""
