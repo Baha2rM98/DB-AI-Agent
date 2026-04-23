@@ -1,536 +1,265 @@
 # LangGraph Database Agent
-*An AI-powered natural language interface for database operations*
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/Baha2rM98/AI_Engineering_Assignment/actions)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://www.postgresql.org/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-Latest-orange.svg)](https://langchain-ai.github.io/langgraph/)
+Natural-language database API built with FastAPI, LangGraph, Gemini, and PostgreSQL.
 
-## 📋 Table of Contents
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Technology Stack](#technology-stack)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [API Documentation](#api-documentation)
-- [Database Schema](#database-schema)
-- [Development](#development)
-- [Deployment](#deployment)
-- [Contributing](#contributing)
+## Overview
 
-## 🎯 Overview
+This project exposes a small HTTP API that:
 
-The LangGraph Database Agent is a sophisticated AI-powered system that enables natural language interactions with PostgreSQL databases. Built using the LangGraph framework and Google's Gemini model, it transforms conversational queries into precise SQL operations while maintaining context across sessions.
+- accepts natural-language database questions
+- persists conversational state with LangGraph checkpoints
+- handles simple schema questions deterministically
+- uses Gemini through LangChain/LangGraph for broader query interpretation
+- stores thread metadata through a thread-first API surface
 
-**What makes this special:**
-- 🧠 **Conversational Memory**: Remembers context within sessions
-- 🔄 **Multi-step Reasoning**: Uses LangGraph's state-driven workflow
-- 🎯 **Context Resolution**: Understands references like "that table" or "show me more"
-- 🛡️ **Error Recovery**: Intelligent fallback mechanisms
-- 📊 **Real-time Processing**: Immediate query execution and results
+The codebase is intentionally flattened around a practical structure:
 
-## ✨ Key Features
+```text
+app/
+  agent/
+  api/
+  integrations/
+  services/
+  main.py
+```
 
-### 🤖 AI Agent Capabilities
-- **Natural Language Processing**: Convert human language to SQL
-- **Context Awareness**: Maintains conversation history and references
-- **Multi-table Operations**: Handles complex joins and relationships
-- **Error Handling**: Graceful handling of ambiguous or impossible requests
+## Current Architecture
 
-### 🔧 Technical Features
-- **Session Management**: Isolated conversation contexts per user
-- **Schema Introspection**: Automatic database structure discovery
-- **Query Optimization**: Intelligent SQL generation with proper indexing
-- **Memory Management**: Configurable conversation history limits
-- **API Security**: Request validation and error handling
+### API
 
-### 🏗️ Infrastructure
-- **Containerized Deployment**: Docker-ready with CI/CD pipeline
-- **Scalable Architecture**: Modular design for easy extension
-- **Health Monitoring**: Built-in health checks and logging
-- **Environment Management**: Flexible configuration system
+- [app/api/routes.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/app/api/routes.py)
+  FastAPI endpoints and response shaping
+- [app/api/dependencies.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/app/api/dependencies.py)
+  dependency wiring for settings, DB gateway, schema service, and query service
 
-## 🏛️ Architecture
+### Services
 
-[//]: # ()
-[//]: # (The system follows a multi-stage LangGraph workflow:)
+- [app/services/query_service.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/app/services/query_service.py)
+  main orchestration logic
+- [app/services/schema_service.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/app/services/schema_service.py)
+  deterministic schema operations like table listing and table description
 
-[//]: # ()
-[//]: # (```mermaid)
+### Integrations
 
-[//]: # (graph TD)
+- [app/integrations/database.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/app/integrations/database.py)
+  SQLAlchemy gateway with sync and native async DB access
+- [app/integrations/persistent_agent.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/app/integrations/persistent_agent.py)
+  LangGraph-backed persistent agent adapter
+- [app/integrations/checkpoint_factory.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/app/integrations/checkpoint_factory.py)
+  LangGraph saver creation for memory, SQLite, or Postgres backends
+- [app/integrations/settings.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/app/integrations/settings.py)
+  typed environment-backed settings
 
-[//]: # (    A[Natural Language Query] --> B[Query Understanding])
+### Agent Workflow
 
-[//]: # (    B --> C[Execution Planning])
+- [app/agent/langgraph_agent.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/app/agent/langgraph_agent.py)
+  LangGraph workflow definition and async invocation path
 
-[//]: # (    C --> D[SQL Generation])
+## Features
 
-[//]: # (    D --> E[Database Execution])
+- `thread_id`-first API design
+- async FastAPI request path
+- native async LangGraph invocation
+- native async SQLAlchemy engine for request-time DB access
+- deterministic handling for:
+  - `show me all tables`
+  - `list tables`
+  - `describe table actor`
+  - `schema for actor`
+  - `columns in actor`
+- Dockerized local stack with Postgres
+- Makefile shortcuts for common dev workflows
 
-[//]: # (    E --> F[Response Formulation])
-
-[//]: # (    F --> G[Natural Language Response])
-
-[//]: # (    )
-[//]: # (    H[Session Memory] --> B)
-
-[//]: # (    H --> C)
-
-[//]: # (    H --> F)
-
-[//]: # (    )
-[//]: # (    I[Error Handler] --> B)
-
-[//]: # (    I --> C)
-
-[//]: # (    I --> D)
-
-[//]: # (    I --> E)
-
-[//]: # (```)
-
-### Core Components
-
-1. **LangGraph Agent** (`app/agent/langraph_agent.py`)
-   - Multi-node workflow processing
-   - State management between nodes
-   - Error handling and recovery
-
-2. **DB Agent Connector** (`app/agent/db_agent_connector.py`)
-   - Session management and memory
-   - Context resolution and reference handling
-   - SQL generation and execution coordination
-
-3. **Database Connector** (`app/database/db_connector.py`)
-   - Low-level database operations
-   - Schema introspection and caching
-   - Connection pooling and error handling
-
-4. **API Layer** (`app/api/routes.py`)
-   - RESTful endpoints
-   - Request/response validation
-   - Session routing and management
-
-## 🛠️ Technology Stack
-
-### AI & Language Models
-- **LangGraph**: State-driven AI agent framework
-- **Google Gemini 1.5 Pro**: Advanced language model for query understanding
-- **LangChain**: LLM integration and prompt management
-
-### Backend & Database
-- **FastAPI**: Modern, high-performance Python web framework
-- **PostgreSQL**: Primary database (tested with Sakila sample database)
-- **SQLAlchemy**: Database ORM and query building
-- **Pydantic**: Data validation and serialization
-
-### DevOps & Deployment
-- **Docker**: Containerization and deployment
-- **GitHub Actions**: CI/CD pipeline automation
-- **pytest**: Testing framework
-- **uvicorn**: ASGI server for production
-
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
+
 - Python 3.11+
-- PostgreSQL 15+
-- Google API Key (for Gemini access)
-- Docker (optional, for containerized deployment)
+- PostgreSQL
+- Google API key
+- Docker optional for containerized local runs
 
-### Local Development Setup
+### Local Setup
 
-1. **Clone the repository**
 ```bash
-git clone https://github.com/Baha2rM98/AI_Engineering_Assignment.git
-cd AI_Engineering_Assignment
-```
-
-2. **Create virtual environment**
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. **Install dependencies**
-```bash
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
+copy .env.example .env
 ```
 
-4. **Set up environment variables**
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
+Fill in `.env` with your database credentials and `GOOGLE_API_KEY`.
 
-5. **Initialize database**
-```bash
-# Set up PostgreSQL with Sakila sample database
-```
+### Run Locally
 
-6. **Run the application**
 ```bash
 python app/main.py
 ```
 
-### Docker Deployment
+Or:
 
 ```bash
-# Build and run with Docker Compose
-docker-compose up --build
-
-# Or use the provided Dockerfile
-docker build -f docker/Dockerfile -t langraph-db-agent .
-docker run -p 8000:8000 --env-file .env langraph-db-agent
+uvicorn app.main:app --reload
 ```
 
-## ⚙️ Configuration
+## Docker
 
-### Environment Variables
+Use the provided Compose stack:
 
 ```bash
-# Database Configuration
+make up
+make down
+make restart
+make rebuild
+make logs
+```
+
+The current stack is defined in:
+
+- [compose.yaml](C:/Users/baha2/PycharmProjects/DB-AI-Agent/compose.yaml)
+- [docker/Dockerfile](C:/Users/baha2/PycharmProjects/DB-AI-Agent/docker/Dockerfile)
+
+## Configuration
+
+Important environment variables:
+
+```bash
 DB_HOST=localhost
 DB_PORT=5432
-DB_USER=your_db_user
-DB_PASSWORD=your_db_password
+DB_USER=postgres
+DB_PASSWORD=postgres
 DB_NAME=sakila
 
-# AI Model Configuration
-GOOGLE_API_KEY=your_gemini_api_key
+GOOGLE_API_KEY=your_google_api_key
+LLM_MODEL=gemini-1.5-pro
 
-# Application Settings
+CHECKPOINTER_BACKEND=memory
+# memory | sqlite | postgres
+
+CHECKPOINTER_DATABASE_URL=
+CHECKPOINTER_SQLITE_PATH=checkpoints.db
+
+HOST=0.0.0.0
 PORT=8000
 LOG_LEVEL=INFO
-
-# Session Management
-MAX_SESSIONS=100
-SESSION_TIMEOUT=60
-MAX_HISTORY_PER_SESSION=10
 ```
 
-### Application Settings
+## API
 
-The system supports various configuration options:
-- Session timeout and cleanup intervals
-- Maximum conversation history per session
-- Database connection pooling settings
-- Logging levels and output formats
+### `GET /`
 
-## 📖 Usage
+Basic app metadata.
 
-### Basic Natural Language Queries
+### `GET /db_connection`
 
-```python
-# Example queries the system can handle:
+Checks DB connectivity and returns active thread count.
 
-# Data retrieval
-"Show me all actors"
-"Find films with rating PG-13"
-"How many customers are there?"
+Example response:
 
-# Contextual follow-ups
-"Show me the first 5"
-"How many are there?"
-"What about that table?"
-
-# Complex operations
-"Find all films by actors named John"
-"Show customer payment history"
-"List top-grossing film categories"
-```
-
-### API Usage
-
-```python
-import requests
-
-# Basic query
-response = requests.post("http://localhost:8000/query", json={
-    "query": "Show me all actors named John",
-    "session_id": "user123"
-})
-
-# Follow-up query in same session
-response = requests.post("http://localhost:8000/query", json={
-    "query": "How many are there?",
-    "session_id": "user123"  # Same session maintains context
-})
-```
-
-### Session Management
-
-```python
-# Get session information
-response = requests.get("http://localhost:8000/sessions/user123")
-
-# Clear session history
-response = requests.delete("http://localhost:8000/sessions/user123")
-
-# List active sessions
-response = requests.get("http://localhost:8000/sessions")
-```
-
-## 📚 API Documentation
-
-### Core Endpoints
-
-#### `POST /query`
-Execute a natural language database query.
-
-**Request:**
 ```json
 {
-    "query": "Show me all films with rating R",
-    "session_id": "optional-session-id"
+  "status": "connected",
+  "database_connection": "ok",
+  "active_threads": 2
 }
 ```
 
-**Response:**
+### `POST /query`
+
+Run a natural-language query.
+
+Request:
+
 ```json
 {
-    "success": true,
-    "message": "I found 195 records in film that match your query.",
-    "data": [
-        {
-            "film_id": 1,
-            "title": "Academy Dinosaur",
-            "rating": "PG"
-        },
-       {
-          etc...
-       },
-    ],
-    "affected_rows": 195,
-    "session_id": "user123"
+  "query": "show me all tables",
+  "thread_id": "user-123"
 }
 ```
 
-#### `GET /health`
-Check system health and database connectivity.
+Response shape:
 
-**Response:**
 ```json
 {
-    "status": "connected",
-    "database_connection": "ok",
-    "active_sessions": 5
+  "success": true,
+  "message": "I found 5 tables in the database.",
+  "agent_response": "I found 5 tables in the database.",
+  "data": [
+    { "table_name": "public.actor" }
+  ],
+  "affected_rows": 5,
+  "thread_id": "user-123",
+  "context_info": {
+    "thread_id": "user-123"
+  }
 }
 ```
 
-#### `GET /sessions/{session_id}`
-Get detailed session information.
+### `GET /threads`
 
-**Response:**
-```json
-{
-    "session_id": "user123",
-    "created_at": "2024-01-15T10:30:00",
-    "last_activity": "2024-01-15T11:45:00",
-    "query_count": 12,
-    "last_table": "film",
-    "last_operation": "select",
-    "context_summary": "Recently working with table: film | Last operation: select"
-}
-```
+List active thread ids known to the app instance.
 
+### `GET /threads/{thread_id}`
 
-## 🗄️ Database Schema
+Return metadata for a thread.
 
-The system is tested with the **Sakila DVD Rental Database**, which includes:
+### `DELETE /threads/{thread_id}`
 
-### Main Tables
-- **film**: Movie catalog with ratings, descriptions, rental rates
-- **actor**: Actor information and filmography
-- **customer**: Customer data and rental history
-- **rental**: Rental transactions and dates
-- **payment**: Payment records and amounts
-- **inventory**: Store inventory and availability
+Clear thread metadata tracked by the app.
 
-### Relationship Tables
-- **film_actor**: Links films to their cast
-- **film_category**: Categorizes films by genre
+## Notes On Persistence
 
-### Reference Tables
-- **category**: Film genres and classifications
-- **language**: Available languages
-- **address/city/country**: Geographic data
+The system uses LangGraph checkpoints for conversational persistence.
 
-The agent automatically discovers and understands these relationships, enabling complex queries across multiple tables.
+Current behavior:
 
-## 🔧 Development
+- durable graph state is handled by LangGraph checkpointers
+- lightweight API-facing thread metadata is tracked separately
+- thread deletion currently clears tracked metadata, not checkpoint rows
 
-### Project Structure
+## Testing
 
-```
-AI_Engineering_Assignment/
-├── app/
-│   ├── agent/
-│   │   ├── langraph_agent.py      # Core LangGraph workflow
-│   │   └── db_agent_connector.py  # Session management & context
-│   ├── api/
-│   │   └── routes.py              # FastAPI endpoints
-│   ├── database/
-│   │   └── db_connector.py        # Database operations
-│   └── main.py                    # Application entry point
-├── tests/
-│   ├── conftest.py                 # Sets up comprehensive test fixtures
-│   ├── test_agent.py               # Agent functionality tests
-│   ├── test_api.py                 # API endpoint tests
-│   ├── test_database.py            # Database operation tests
-    └── test_db_agent_connector.py  # Database agent connector tests
-├── docker/
-│   └── Dockerfile                # Container configuration
-├── .github/workflows/
-│   └── ci-cd.yml                 # CI/CD pipeline
-└── requirements.txt              # Python dependencies
-```
-
-### Running Tests
+Run the suite with:
 
 ```bash
-# Run all tests
-pytest
+.venv\Scripts\python.exe -m pytest -q
 ```
 
-### Code Quality
+Current status after the latest refactor:
 
-The project follows these standards:
-- **PEP 8**: Python code style guidelines
-- **Type Hints**: Full type annotation coverage
-- **Error Handling**: Comprehensive exception management
-- **Logging**: Structured logging for debugging and monitoring
-- **Documentation**: Docstrings for all public methods
+- `45 passed, 1 skipped`
 
-### Adding New Features
+Test files:
 
-1. **Database Operations**: Extend `DatabaseConnector` for new operation types
-2. **Agent Capabilities**: Add nodes to the LangGraph workflow
-3. **API Endpoints**: Create new routes in `routes.py`
-4. **Session Features**: Enhance `ConversationSession` class
+- [tests/test_agent.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_agent.py)
+- [tests/test_api.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_api.py)
+- [tests/test_database.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_database.py)
+- [tests/test_query_service.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_query_service.py)
 
-## 🚢 Deployment
+## Development Notes
 
-### Production Deployment
+The refactor moved the project away from:
 
-1. **Environment Setup**
-```bash
-# Production environment variables
-export ENV=production
-export LOG_LEVEL=WARNING
-export DB_POOL_SIZE=20
-```
+- global mutable API state
+- manual in-process session management
+- session-based API contracts
+- over-layered folder structure
+- sync request handlers that blocked on LLM work
 
-2. **Docker Deployment**
-```bash
-# Build production image
-docker build -f docker/Dockerfile -t langraph-agent:prod .
+The current design is much closer to:
 
-# Run with production settings
-docker run -d \
-  --name langraph-agent \
-  -p 8000:8000 \
-  --env-file .env.prod \
-  langraph-agent:prod
-```
+- flat, practical modules
+- `thread_id`-first request flow
+- async request handling
+- persistent LangGraph threads
+- deterministic schema responses where possible
 
-3. **Kubernetes Deployment**
-```yaml
-# Example k8s deployment configuration
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: langraph-agent
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: langraph-agent
-  template:
-    metadata:
-      labels:
-        app: langraph-agent
-    spec:
-      containers:
-      - name: langraph-agent
-        image: langraph-agent:prod
-        ports:
-        - containerPort: 8000
-```
+## References
 
-### CI/CD Pipeline
+Native async DB access uses SQLAlchemy asyncio with the Psycopg dialect:
 
-The project includes automated GitHub Actions workflows:
+- [SQLAlchemy PostgreSQL dialect docs](https://docs.sqlalchemy.org/21/dialects/postgresql.html)
 
-- **Testing**: Runs on every push and PR
-- **Security Scanning**: Dependency vulnerability checks
-- **Docker Build**: Automated image building and pushing
-- **Deployment**: Automatic deployment to staging/production
+LangGraph supports async graph invocation and async savers such as `AsyncPostgresSaver` and `AsyncSqliteSaver`:
 
-## 🤝 Contributing
-
-We welcome contributions! Please follow these guidelines:
-
-### Development Process
-
-1. **Fork the repository**
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-3. **Make your changes**
-   - Follow existing code style
-   - Add tests for new functionality
-   - Update documentation as needed
-
-4. **Run tests and checks**
-   ```bash
-   pytest
-   black app/ tests/  # Code formatting
-   mypy app/         # Type checking
-   ```
-
-5. **Submit a pull request**
-   - Provide clear description of changes
-   - Reference any related issues
-   - Ensure all CI checks pass
-
-### Code Guidelines
-
-- **Write Tests**: All new features must include tests
-- **Document Changes**: Update README and docstrings
-- **Handle Errors**: Implement proper error handling
-- **Type Safety**: Use type hints throughout
-- **Performance**: Consider the impact on session memory and database operations
-
-### Areas for Contribution
-
-- **New Database Support**: Add connectors for MySQL, MongoDB, etc.
-- **Enhanced NLP**: Improve query understanding and context resolution
-- **UI Interface**: Build a web frontend for the API
-- **Performance Optimization**: Database query optimization and caching
-- **Security Features**: Authentication, authorization, and audit logging
-
----
-
-## 🙏 Acknowledgments
-
-- **LangGraph Team**: For the powerful agent framework
-- **Google**: For the Gemini language model
-- **FastAPI**: For the excellent web framework
-- **PostgreSQL**: For reliable database foundations
-- **Sakila Database**: For comprehensive testing data
-
-## 📞 Contact
-
-**Baha2r** - [GitHub](https://github.com/Baha2rM98)
-
-Project Link: [https://github.com/Baha2rM98/AI_Engineering_Assignment](https://github.com/Baha2rM98/AI_Engineering_Assignment)
-
----
-
-*Built with ❤️ for the AI Engineering Assignment - showcasing the power of LangGraph, natural language processing, and intelligent database interactions.*
+- [LangGraph docs](https://langchain-ai.github.io/langgraph/)

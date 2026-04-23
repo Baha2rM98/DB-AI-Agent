@@ -12,6 +12,7 @@ langchain-google-genai
 langgraph
 langgraph-checkpoint-sqlite
 langgraph-checkpoint-postgres
+aiosqlite
 
 # Database
 psycopg[binary]

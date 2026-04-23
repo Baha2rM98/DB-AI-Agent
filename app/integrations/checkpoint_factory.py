@@ -7,7 +7,7 @@ from typing import Any
 from app.integrations.settings import Settings
 
 
-def create_checkpointer(settings: Settings) -> Any:
+async def create_checkpointer(settings: Settings) -> tuple[Any, Any | None]:
     """Create the configured LangGraph checkpointer implementation.
 
     The factory keeps imports local so optional checkpoint backends only need
@@ -18,25 +18,22 @@ def create_checkpointer(settings: Settings) -> Any:
     if backend == "memory":
         from langgraph.checkpoint.memory import InMemorySaver
 
-        return InMemorySaver()
+        return InMemorySaver(), None
 
     if backend == "sqlite":
         try:
-            from langgraph.checkpoint.sqlite import SqliteSaver
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
         except ImportError as exc:  # pragma: no cover - depends on optional deps.
             raise RuntimeError(
-                "SQLite checkpointing requires the 'langgraph-checkpoint-sqlite' package."
+                "SQLite checkpointing requires the 'langgraph-checkpoint-sqlite' and 'aiosqlite' packages."
             ) from exc
 
         sqlite_path = settings.checkpointer_sqlite_path
-        saver = _materialize_saver(SqliteSaver.from_conn_string(sqlite_path))
-        if hasattr(saver, "setup"):
-            saver.setup()
-        return saver
+        return await _materialize_async_saver(AsyncSqliteSaver.from_conn_string(sqlite_path))
 
     if backend == "postgres":
         try:
-            from langgraph.checkpoint.postgres import PostgresSaver
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
         except ImportError as exc:  # pragma: no cover - depends on optional deps.
             raise RuntimeError(
                 "Postgres checkpointing requires the 'langgraph-checkpoint-postgres' package."
@@ -47,27 +44,28 @@ def create_checkpointer(settings: Settings) -> Any:
                 "CHECKPOINTER_DATABASE_URL must be set when CHECKPOINTER_BACKEND=postgres."
             )
 
-        saver = _materialize_saver(
-            PostgresSaver.from_conn_string(settings.checkpointer_database_url)
+        return await _materialize_async_saver(
+            AsyncPostgresSaver.from_conn_string(settings.checkpointer_database_url)
         )
-        if hasattr(saver, "setup"):
-            saver.setup()
-        return saver
 
     raise RuntimeError(f"Unsupported checkpointer backend: {settings.checkpointer_backend}")
 
 
-def _materialize_saver(candidate: Any) -> Any:
-    """Enter saver context managers and keep them alive for app lifetime.
+async def _materialize_async_saver(candidate: Any) -> tuple[Any, Any | None]:
+    """Enter async saver context managers and keep them alive for app lifetime.
 
-    LangGraph saver factories such as `PostgresSaver.from_conn_string()` return
-    generator-backed context managers in current versions. The API layer needs a
-    concrete saver instance, so this helper enters the context and stores the
-    manager on the resulting saver object to prevent premature cleanup.
+    LangGraph async saver factories return async context managers in current
+    versions. The API layer needs a concrete saver instance, so this helper
+    enters the context and returns both the saver and the manager so the caller
+    can close it cleanly at shutdown.
     """
-    if hasattr(candidate, "__enter__") and hasattr(candidate, "__exit__"):
+    if hasattr(candidate, "__aenter__") and hasattr(candidate, "__aexit__"):
         context_manager = candidate
-        saver = context_manager.__enter__()
-        setattr(saver, "_managed_context", context_manager)
-        return saver
-    return candidate
+        saver = await context_manager.__aenter__()
+        if hasattr(saver, "setup"):
+            await saver.setup()
+        return saver, context_manager
+
+    if hasattr(candidate, "setup"):
+        await candidate.setup()
+    return candidate, None

@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 @router.get("/", response_model=RootResponse, tags=["health"])
-def read_root() -> RootResponse:
+async def read_root() -> RootResponse:
     """Return basic application metadata."""
     return RootResponse(
         name="LangGraph Database Agent API",
@@ -27,12 +27,12 @@ def read_root() -> RootResponse:
 
 
 @router.get("/db_connection", response_model=HealthResponse, tags=["health"])
-def health_check(
+async def health_check(
     database_gateway: SQLAlchemyDatabaseGateway = Depends(get_database_gateway),
     query_service: QueryService = Depends(get_query_service),
 ) -> HealthResponse:
     """Verify database connectivity for the running application."""
-    if not database_gateway.test_connection():
+    if not await database_gateway.atest_connection():
         raise HTTPException(status_code=503, detail="Database connection failed")
 
     return HealthResponse(
@@ -43,7 +43,7 @@ def health_check(
 
 
 @router.post("/query", response_model=QueryResponse, tags=["query"])
-def process_query(
+async def process_query(
     request: QueryRequest,
     query_service: QueryService = Depends(get_query_service),
 ) -> QueryResponse:
@@ -51,7 +51,7 @@ def process_query(
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    result = query_service.execute_query(
+    result = await query_service.execute_query(
         query=request.query,
         thread_id=request.effective_thread_id,
     )
@@ -68,7 +68,7 @@ def process_query(
 
 
 @router.get("/threads", response_model=list[str], tags=["query"])
-def get_active_threads(
+async def get_active_threads(
     query_service: QueryService = Depends(get_query_service),
 ) -> list[str]:
     """Return the active conversation thread identifiers."""
@@ -76,7 +76,7 @@ def get_active_threads(
 
 
 @router.get("/threads/{thread_id}", response_model=ThreadInfoResponse, tags=["query"])
-def get_thread_info(
+async def get_thread_info(
     thread_id: str,
     query_service: QueryService = Depends(get_query_service),
 ) -> ThreadInfoResponse:
@@ -88,7 +88,7 @@ def get_thread_info(
 
 
 @router.delete("/threads/{thread_id}", tags=["query"])
-def clear_thread(
+async def clear_thread(
     thread_id: str,
     query_service: QueryService = Depends(get_query_service),
 ) -> dict:

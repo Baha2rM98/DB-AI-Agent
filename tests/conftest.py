@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from typing import Dict, Any, List
 from sqlalchemy import text
 from fastapi.testclient import TestClient
@@ -43,7 +43,9 @@ def mock_db_connector():
     """Mock database connector for unit tests."""
     mock_connector = Mock(spec=SQLAlchemyDatabaseGateway)
     mock_connector.test_connection.return_value = True
+    mock_connector.atest_connection = AsyncMock(return_value=True)
     mock_connector.get_table_names.return_value = ["actor", "film", "customer", "rental"]
+    mock_connector.aget_table_names = AsyncMock(return_value=["actor", "film", "customer", "rental"])
     mock_connector.get_table_schema.return_value = {
         "table_name": "actor",
         "columns": [
@@ -55,6 +57,7 @@ def mock_db_connector():
         "foreign_keys": [],
         "indices": []
     }
+    mock_connector.aget_table_schema = AsyncMock(return_value=mock_connector.get_table_schema.return_value)
     mock_connector.execute_query.return_value = {
         "success": True,
         "data": [
@@ -63,6 +66,7 @@ def mock_db_connector():
         ],
         "affected_rows": 2
     }
+    mock_connector.aexecute_query = AsyncMock(return_value=mock_connector.execute_query.return_value)
     mock_connector.get_database_schema.return_value = {
         "actor": {
             "table_name": "actor",
@@ -76,6 +80,7 @@ def mock_db_connector():
             "indices": []
         }
     }
+    mock_connector.aget_database_schema = AsyncMock(return_value=mock_connector.get_database_schema.return_value)
     return mock_connector
 
 
@@ -128,7 +133,7 @@ def mock_agent_result():
 def mock_query_service():
     """Mock the application query service used by the API layer."""
     mock_service = Mock(spec=QueryService)
-    mock_service.execute_query.return_value = QueryResult(
+    mock_service.execute_query = AsyncMock(return_value=QueryResult(
         success=True,
         message="Found 2 actors",
         agent_response="Found 2 actors",
@@ -147,7 +152,7 @@ def mock_query_service():
             "last_operation": "select",
             "context_summary": "Test session",
         },
-    )
+    ))
     mock_service.get_active_threads.return_value = ["test_session"]
     mock_service.get_thread_info.return_value = {
         "thread_id": "test_session",
@@ -159,6 +164,7 @@ def mock_query_service():
         "context_summary": "Test session",
     }
     mock_service.clear_thread.return_value = True
+    mock_service.aclose = AsyncMock(return_value=None)
     return mock_service
 
 

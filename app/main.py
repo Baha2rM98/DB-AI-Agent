@@ -1,14 +1,23 @@
 """Application bootstrap and FastAPI app factory."""
 
 import logging
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
+from app.api.dependencies import get_query_service
 from app.api.routes import router as api_router
 from app.integrations.settings import Settings
 
 load_dotenv()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Manage long-lived async resources for the application."""
+    yield
+    await get_query_service().aclose()
 
 
 def create_app() -> FastAPI:
@@ -25,6 +34,7 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         description="API for natural language database interactions using LangGraph.",
         version=settings.app_version,
+        lifespan=lifespan,
     )
     app.include_router(api_router)
     return app

@@ -5,6 +5,7 @@ natural-language request, hand it to the agent, and normalize the response for
 the API layer.
 """
 
+from inspect import isawaitable
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol
 
@@ -14,7 +15,7 @@ from app.services.schema_service import SchemaService
 class AgentClient(Protocol):
     """Describe the agent behavior required by the service layer."""
 
-    def execute_query(self, query: str, thread_id: str) -> Dict[str, Any]:
+    async def execute_query(self, query: str, thread_id: str) -> Dict[str, Any]:
         """Run a natural-language query for a given thread."""
 
     def get_thread_info(self, thread_id: str) -> Dict[str, Any]:
@@ -56,6 +57,9 @@ class DatabaseClient(Protocol):
     def get_database_schema(self) -> Dict[str, Any]:
         """Return schema information for the full database."""
 
+    async def atest_connection(self) -> bool:
+        """Verify that the configured database is reachable asynchronously."""
+
 
 @dataclass(slots=True)
 class QueryResult:
@@ -84,13 +88,13 @@ class QueryService:
         self._database_gateway = database_gateway
         self._schema_service = schema_service
 
-    def execute_query(self, query: str, thread_id: str) -> QueryResult:
+    async def execute_query(self, query: str, thread_id: str) -> QueryResult:
         """Execute a natural-language query and normalize the result payload."""
-        schema_result = self._try_handle_schema_query(query=query, thread_id=thread_id)
+        schema_result = await self._try_handle_schema_query(query=query, thread_id=thread_id)
         if schema_result is not None:
             return schema_result
 
-        result = self._agent.execute_query(query=query, thread_id=thread_id)
+        result = await self._agent.execute_query(query=query, thread_id=thread_id)
         context_info = self._build_context_info(thread_id)
         agent_response = result.get("agent_response") or result.get("response", "")
         message = result.get("message") or agent_response
@@ -105,11 +109,11 @@ class QueryService:
             context_info=context_info,
         )
 
-    def get_health_snapshot(self) -> Dict[str, Any]:
+    async def get_health_snapshot(self) -> Dict[str, Any]:
         """Expose a small application snapshot useful for diagnostics."""
-        schema = self._schema_service.get_database_schema()
+        schema = await self._schema_service.get_database_schema()
         return {
-            "database_connection": self._database_gateway.test_connection(),
+            "database_connection": await self._database_gateway.atest_connection(),
             "table_count": len(schema.get("tables", {})),
         }
 
@@ -130,15 +134,15 @@ class QueryService:
         thread_info = self._agent.get_thread_info(thread_id)
         return thread_info if thread_info.get("thread_id") else {}
 
-    def _try_handle_schema_query(self, query: str, thread_id: str) -> QueryResult | None:
+    async def _try_handle_schema_query(self, query: str, thread_id: str) -> QueryResult | None:
         """Answer simple schema questions directly without invoking the LLM."""
-        schema_query = self._schema_service.detect_schema_query(query)
+        schema_query = await self._schema_service.detect_schema_query(query)
         if schema_query is None:
             return None
 
         if schema_query.operation == "list_tables":
-            tables = self._schema_service.list_tables()
-            self._agent.record_thread_activity(thread_id, "schema_list")
+            tables = await self._schema_service.list_tables()
+            await self._record_thread_activity(thread_id, "schema_list")
             message = f"I found {len(tables)} tables in the database."
             return QueryResult(
                 success=True,
@@ -151,11 +155,11 @@ class QueryService:
             )
 
         if schema_query.operation == "describe_table" and schema_query.table_name:
-            table_details = self._schema_service.get_table_details(schema_query.table_name)
+            table_details = await self._schema_service.get_table_details(schema_query.table_name)
             if table_details is None:
                 return None
 
-            self._agent.record_thread_activity(thread_id, "schema_describe")
+            await self._record_thread_activity(thread_id, "schema_describe")
             columns = table_details.get("columns", [])
             message = (
                 f"I found the schema for table '{schema_query.table_name}' "
@@ -172,3 +176,25 @@ class QueryService:
             )
 
         return None
+
+    async def aclose(self) -> None:
+        """Close async resources held by downstream integrations when available."""
+        database_close_hook = getattr(self._database_gateway, "aclose", None)
+        if database_close_hook is not None:
+            result = database_close_hook()
+            if isawaitable(result):
+                await result
+
+        close_hook = getattr(self._agent, "aclose", None)
+        if close_hook is None:
+            return
+
+        result = close_hook()
+        if isawaitable(result):
+            await result
+
+    async def _record_thread_activity(self, thread_id: str, operation: str | None) -> None:
+        """Record deterministic service activity for the current thread."""
+        result = self._agent.record_thread_activity(thread_id, operation)
+        if isawaitable(result):
+            await result

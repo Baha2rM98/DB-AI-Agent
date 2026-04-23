@@ -16,7 +16,7 @@ class TestAPIRoutes:
 
     def test_health_check_success(self, test_client, mock_service_dependency, mock_db_connector):
         """Test successful health check."""
-        mock_db_connector.test_connection.return_value = True
+        mock_db_connector.atest_connection.return_value = True
         mock_service_dependency.get_active_threads.return_value = ["session1"]
 
         response = test_client.get("/db_connection")
@@ -29,7 +29,7 @@ class TestAPIRoutes:
 
     def test_health_check_failure(self, test_client, mock_service_dependency, mock_db_connector):
         """Test health check with database connection failure."""
-        mock_db_connector.test_connection.return_value = False
+        mock_db_connector.atest_connection.return_value = False
 
         response = test_client.get("/db_connection")
 
