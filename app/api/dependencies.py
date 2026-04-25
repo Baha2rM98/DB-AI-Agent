@@ -22,11 +22,6 @@ def get_target_database_gateway() -> SQLAlchemyDatabaseGateway:
     return SQLAlchemyDatabaseGateway(settings.target_database_url)
 
 
-def get_database_gateway() -> SQLAlchemyDatabaseGateway:
-    """Backward-compatible dependency alias for the target database gateway."""
-    return get_target_database_gateway()
-
-
 @lru_cache
 def get_schema_service() -> SchemaService:
     """Create the schema service for the external target database."""

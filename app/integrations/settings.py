@@ -52,12 +52,6 @@ class Settings:
             checkpointer_sqlite_path=os.getenv("CHECKPOINTER_SQLITE_PATH", "checkpoints.db"),
         )
 
-    @property
-    def database_url(self) -> str:
-        """Backward-compatible alias for the target database URL."""
-        return self.target_database_url
-
-
 def _env_flag(name: str, default: bool = False) -> bool:
     """Parse common truthy environment values into booleans."""
     raw_value = os.getenv(name)

@@ -6,33 +6,13 @@ from typing import Any, Dict, Optional, Protocol
 
 
 class SchemaDatabaseClient(Protocol):
-    """Describe the schema access needed by the service layer."""
-
-    def get_database_schema(self) -> Dict[str, Any]:
-        """Return schema information for the full database."""
-
-    def get_table_names(self, schema: Optional[str] = None) -> list[str]:
-        """List table names in the configured database."""
-
-    def get_table_schema(
-        self,
-        table_name: str,
-        schema: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Return schema information for a single table."""
+    """Describe async schema access needed by the service layer."""
 
     async def aget_database_schema(self) -> Dict[str, Any]:
         """Return schema information for the full database asynchronously."""
 
     async def aget_table_names(self, schema: Optional[str] = None) -> list[str]:
         """List table names asynchronously."""
-
-    async def aget_table_schema(
-        self,
-        table_name: str,
-        schema: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Return table schema asynchronously."""
 
 
 @dataclass(frozen=True, slots=True)

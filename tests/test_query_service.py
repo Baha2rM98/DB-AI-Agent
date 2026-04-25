@@ -13,15 +13,18 @@ class TestQueryServiceSchemaHandling:
         """Table-listing requests should be answered directly from schema data."""
         mock_agent = Mock()
         mock_agent.execute_query = AsyncMock()
-        mock_agent.get_thread_info.return_value = {"thread_id": "thread-1", "query_count": 1}
-        mock_db = Mock()
-        mock_db.get_database_schema.return_value = {
+        mock_agent.get_thread_info = AsyncMock(
+            return_value={"thread_id": "thread-1", "query_count": 1}
+        )
+        mock_agent.record_thread_activity = AsyncMock()
+        schema = {
             "tables": {
                 "public.actor": {"table_name": "actor", "columns": []},
                 "public.film": {"table_name": "film", "columns": []},
             }
         }
-        mock_db.aget_database_schema = AsyncMock(return_value=mock_db.get_database_schema.return_value)
+        mock_db = Mock()
+        mock_db.aget_database_schema = AsyncMock(return_value=schema)
         mock_db.aget_table_names = AsyncMock(return_value=["public.actor", "public.film"])
 
         service = QueryService(
@@ -39,16 +42,18 @@ class TestQueryServiceSchemaHandling:
             {"table_name": "public.film"},
         ]
         mock_agent.execute_query.assert_not_called()
-        mock_agent.record_thread_activity.assert_called_once_with("thread-1", "schema_list")
+        mock_agent.record_thread_activity.assert_awaited_once_with("thread-1", "schema_list")
 
     @pytest.mark.anyio
     async def test_describe_table_bypasses_agent(self):
         """Table-description requests should return schema details directly."""
         mock_agent = Mock()
         mock_agent.execute_query = AsyncMock()
-        mock_agent.get_thread_info.return_value = {"thread_id": "thread-2", "query_count": 1}
-        mock_db = Mock()
-        mock_db.get_database_schema.return_value = {
+        mock_agent.get_thread_info = AsyncMock(
+            return_value={"thread_id": "thread-2", "query_count": 1}
+        )
+        mock_agent.record_thread_activity = AsyncMock()
+        schema = {
             "tables": {
                 "public.actor": {
                     "table_name": "actor",
@@ -62,7 +67,8 @@ class TestQueryServiceSchemaHandling:
                 }
             }
         }
-        mock_db.aget_database_schema = AsyncMock(return_value=mock_db.get_database_schema.return_value)
+        mock_db = Mock()
+        mock_db.aget_database_schema = AsyncMock(return_value=schema)
         mock_db.aget_table_names = AsyncMock(return_value=["public.actor"])
 
         service = QueryService(
@@ -77,7 +83,7 @@ class TestQueryServiceSchemaHandling:
         assert result.affected_rows == 2
         assert result.data[0]["table_name"] == "actor"
         mock_agent.execute_query.assert_not_called()
-        mock_agent.record_thread_activity.assert_called_once_with("thread-2", "schema_describe")
+        mock_agent.record_thread_activity.assert_awaited_once_with("thread-2", "schema_describe")
 
     @pytest.mark.anyio
     async def test_non_schema_query_still_uses_agent(self):
@@ -88,9 +94,9 @@ class TestQueryServiceSchemaHandling:
             "response": "Found actor rows",
             "context": {"sql_query": "SELECT actor_id FROM actor"},
         })
-        mock_agent.get_thread_info.return_value = {"thread_id": "thread-3"}
+        mock_agent.get_thread_info = AsyncMock(return_value={"thread_id": "thread-3"})
         mock_db = Mock()
-        mock_db.get_database_schema.return_value = {"tables": {}}
+        mock_db.execute_query = Mock(side_effect=AssertionError("sync execute_query must not be used"))
         mock_db.aget_database_schema = AsyncMock(return_value={"tables": {}})
         mock_db.aget_table_names = AsyncMock(return_value=[])
         mock_db.aexecute_query = AsyncMock(return_value={
@@ -115,6 +121,7 @@ class TestQueryServiceSchemaHandling:
             thread_id="thread-3",
         )
         mock_db.aexecute_query.assert_awaited_once_with("SELECT actor_id FROM actor")
+        mock_db.execute_query.assert_not_called()
         assert result.sql_query == "SELECT actor_id FROM actor"
         assert result.operation_type == "select"
 
@@ -126,9 +133,9 @@ class TestQueryServiceSchemaHandling:
             "response": "I can update that actor.",
             "context": {"sql_query": "UPDATE actor SET first_name = 'Jane' WHERE actor_id = 1"},
         })
-        mock_agent.get_thread_info.return_value = {"thread_id": "thread-4"}
+        mock_agent.get_thread_info = AsyncMock(return_value={"thread_id": "thread-4"})
         mock_db = Mock()
-        mock_db.get_database_schema.return_value = {"tables": {}}
+        mock_db.execute_query = Mock(side_effect=AssertionError("sync execute_query must not be used"))
         mock_db.aget_database_schema = AsyncMock(return_value={"tables": {}})
         mock_db.aget_table_names = AsyncMock(return_value=[])
         mock_db.aexecute_query = AsyncMock()
@@ -145,6 +152,7 @@ class TestQueryServiceSchemaHandling:
         assert result.operation_type == "update"
         assert "writes are disabled" in result.message
         mock_db.aexecute_query.assert_not_called()
+        mock_db.execute_query.assert_not_called()
 
     @pytest.mark.anyio
     async def test_multiple_statements_are_blocked(self):
@@ -154,9 +162,9 @@ class TestQueryServiceSchemaHandling:
             "response": "Here are the actors.",
             "context": {"sql_query": "SELECT * FROM actor; DROP TABLE actor;"},
         })
-        mock_agent.get_thread_info.return_value = {"thread_id": "thread-5"}
+        mock_agent.get_thread_info = AsyncMock(return_value={"thread_id": "thread-5"})
         mock_db = Mock()
-        mock_db.get_database_schema.return_value = {"tables": {}}
+        mock_db.execute_query = Mock(side_effect=AssertionError("sync execute_query must not be used"))
         mock_db.aget_database_schema = AsyncMock(return_value={"tables": {}})
         mock_db.aget_table_names = AsyncMock(return_value=[])
         mock_db.aexecute_query = AsyncMock()
@@ -173,3 +181,4 @@ class TestQueryServiceSchemaHandling:
         assert result.operation_type == "select"
         assert "multiple statements" in result.message
         mock_db.aexecute_query.assert_not_called()
+        mock_db.execute_query.assert_not_called()

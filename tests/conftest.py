@@ -2,13 +2,11 @@ import pytest
 import asyncio
 import os
 from unittest.mock import AsyncMock, Mock, patch
-from typing import Dict, Any, List
 from sqlalchemy import text
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.api.dependencies import get_database_gateway, get_query_service
-from app.integrations.database import SQLAlchemyDatabaseGateway
+from app.api.dependencies import get_query_service
 from app.services.query_service import QueryResult, QueryService
 
 
@@ -39,52 +37,6 @@ def test_connection_string(test_db_config):
 
 
 @pytest.fixture
-def mock_db_connector():
-    """Mock database connector for unit tests."""
-    mock_connector = Mock(spec=SQLAlchemyDatabaseGateway)
-    mock_connector.test_connection.return_value = True
-    mock_connector.atest_connection = AsyncMock(return_value=True)
-    mock_connector.get_table_names.return_value = ["actor", "film", "customer", "rental"]
-    mock_connector.aget_table_names = AsyncMock(return_value=["actor", "film", "customer", "rental"])
-    mock_connector.get_table_schema.return_value = {
-        "table_name": "actor",
-        "columns": [
-            {"name": "actor_id", "type": "INTEGER", "nullable": False},
-            {"name": "first_name", "type": "VARCHAR(45)", "nullable": False},
-            {"name": "last_name", "type": "VARCHAR(45)", "nullable": False}
-        ],
-        "primary_keys": ["actor_id"],
-        "foreign_keys": [],
-        "indices": []
-    }
-    mock_connector.aget_table_schema = AsyncMock(return_value=mock_connector.get_table_schema.return_value)
-    mock_connector.execute_query.return_value = {
-        "success": True,
-        "data": [
-            {"actor_id": 1, "first_name": "John", "last_name": "Doe"},
-            {"actor_id": 2, "first_name": "Jane", "last_name": "Smith"}
-        ],
-        "affected_rows": 2
-    }
-    mock_connector.aexecute_query = AsyncMock(return_value=mock_connector.execute_query.return_value)
-    mock_connector.get_database_schema.return_value = {
-        "actor": {
-            "table_name": "actor",
-            "columns": [
-                {"name": "actor_id", "type": "INTEGER", "nullable": False},
-                {"name": "first_name", "type": "VARCHAR(45)", "nullable": False},
-                {"name": "last_name", "type": "VARCHAR(45)", "nullable": False}
-            ],
-            "primary_keys": ["actor_id"],
-            "foreign_keys": [],
-            "indices": []
-        }
-    }
-    mock_connector.aget_database_schema = AsyncMock(return_value=mock_connector.get_database_schema.return_value)
-    return mock_connector
-
-
-@pytest.fixture
 def sample_actor_data():
     """Sample actor data for testing."""
     return [
@@ -92,23 +44,6 @@ def sample_actor_data():
         {"actor_id": 2, "first_name": "Jane", "last_name": "Smith"},
         {"actor_id": 3, "first_name": "Bob", "last_name": "Johnson"}
     ]
-
-
-@pytest.fixture
-def sample_film_data():
-    """Sample film data for testing."""
-    return [
-        {"film_id": 1, "title": "Test Movie", "rating": "PG-13", "length": 120},
-        {"film_id": 2, "title": "Another Film", "rating": "R", "length": 90}
-    ]
-
-
-@pytest.fixture
-def mock_llm_response():
-    """Mock LLM response for agent testing."""
-    mock_response = Mock()
-    mock_response.content = "SELECT * FROM actor WHERE first_name = 'John'"
-    return mock_response
 
 
 @pytest.fixture
@@ -153,8 +88,8 @@ def mock_query_service():
             "context_summary": "Test session",
         },
     ))
-    mock_service.get_active_threads.return_value = ["test_session"]
-    mock_service.get_thread_info.return_value = {
+    mock_service.get_active_threads = AsyncMock(return_value=["test_session"])
+    mock_service.get_thread_info = AsyncMock(return_value={
         "thread_id": "test_session",
         "created_at": "2024-01-01T12:00:00",
         "last_activity": "2024-01-01T12:30:00",
@@ -162,8 +97,8 @@ def mock_query_service():
         "last_table": "actor",
         "last_operation": "select",
         "context_summary": "Test session",
-    }
-    mock_service.clear_thread.return_value = True
+    })
+    mock_service.clear_thread = AsyncMock(return_value=True)
     mock_service.aclose = AsyncMock(return_value=None)
     return mock_service
 
@@ -175,52 +110,15 @@ def test_client():
 
 
 @pytest.fixture
-def mock_service_dependency(mock_query_service, mock_db_connector):
+def mock_service_dependency(mock_query_service):
     """Override API dependencies with test doubles."""
 
     def override_get_query_service():
         return mock_query_service
 
-    def override_get_database_gateway():
-        return mock_db_connector
-
     app.dependency_overrides[get_query_service] = override_get_query_service
-    app.dependency_overrides[get_database_gateway] = override_get_database_gateway
     yield mock_query_service
     app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def sakila_schema():
-    """Sakila database schema for testing."""
-    return {
-        "actor": {
-            "table_name": "actor",
-            "columns": [
-                {"name": "actor_id", "type": "INTEGER", "nullable": False},
-                {"name": "first_name", "type": "VARCHAR(45)", "nullable": False},
-                {"name": "last_name", "type": "VARCHAR(45)", "nullable": False},
-                {"name": "last_update", "type": "TIMESTAMP", "nullable": False}
-            ],
-            "primary_keys": ["actor_id"],
-            "foreign_keys": [],
-            "indices": []
-        },
-        "film": {
-            "table_name": "film",
-            "columns": [
-                {"name": "film_id", "type": "INTEGER", "nullable": False},
-                {"name": "title", "type": "VARCHAR(255)", "nullable": False},
-                {"name": "description", "type": "TEXT", "nullable": True},
-                {"name": "release_year", "type": "INTEGER", "nullable": True},
-                {"name": "rating", "type": "VARCHAR(10)", "nullable": True},
-                {"name": "length", "type": "INTEGER", "nullable": True}
-            ],
-            "primary_keys": ["film_id"],
-            "foreign_keys": [],
-            "indices": []
-        }
-    }
 
 
 @pytest.fixture(autouse=True)
@@ -265,17 +163,6 @@ class DatabaseTestHelper:
                                   last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                                   )
                               """))
-            conn.commit()
-
-    @staticmethod
-    def insert_test_data(engine, table_name: str, data: List[Dict[str, Any]]):
-        """Insert test data into specified table."""
-        with engine.connect() as conn:
-            for row in data:
-                columns = ", ".join(row.keys())
-                placeholders = ", ".join([f":{k}" for k in row.keys()])
-                query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
-                conn.execute(text(query), row)
             conn.commit()
 
     @staticmethod

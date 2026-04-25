@@ -197,51 +197,7 @@ class SQLAlchemyDatabaseGateway:
         schema: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Return schema metadata for a single table."""
-        inspector = inspect(self.engine)
-        columns = inspector.get_columns(table_name, schema=schema)
-        primary_keys = inspector.get_pk_constraint(table_name, schema=schema)
-        foreign_keys = inspector.get_foreign_keys(table_name, schema=schema)
-        indexes = inspector.get_indexes(table_name, schema=schema)
-
-        return {
-            "schema": schema or inspector.default_schema_name,
-            "table_name": table_name,
-            "columns": [
-                {
-                    "name": column["name"],
-                    "type": str(column["type"]),
-                    "nullable": column.get("nullable", True),
-                    "default": str(column.get("default", "")),
-                }
-                for column in columns
-            ],
-            "primary_keys": primary_keys.get("constrained_columns", []),
-            "foreign_keys": [
-                {
-                    "constrained_columns": foreign_key["constrained_columns"],
-                    "referred_schema": foreign_key.get("referred_schema"),
-                    "referred_table": foreign_key["referred_table"],
-                    "referred_columns": foreign_key["referred_columns"],
-                }
-                for foreign_key in foreign_keys
-            ],
-            "indices": indexes,
-        }
-
-    async def aget_table_schema(
-        self,
-        table_name: str,
-        schema: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Return table schema through the native async SQLAlchemy engine."""
-        async with self.async_engine.connect() as connection:
-            return await connection.run_sync(
-                lambda sync_connection: self._inspect_table_schema(
-                    sync_connection,
-                    table_name,
-                    schema,
-                )
-            )
+        return self._inspect_table_schema(self.engine, table_name, schema)
 
     def get_database_schema(self) -> Dict[str, Any]:
         """Return schema metadata for all non-system schemas."""

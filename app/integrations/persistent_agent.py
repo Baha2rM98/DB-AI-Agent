@@ -35,10 +35,10 @@ class PersistentLangGraphAgent:
             checkpointer=checkpointer,
             model_name=self._settings.llm_model,
         )
-        self._thread_registry.record_activity(thread_id, self._extract_operation(result))
+        await self.record_thread_activity(thread_id, self._extract_operation(result))
         return result
 
-    def get_thread_info(self, thread_id: str) -> Dict[str, Any]:
+    async def get_thread_info(self, thread_id: str) -> Dict[str, Any]:
         """Return metadata for a persisted thread."""
         record = self._thread_registry.get(thread_id)
         if record is None:
@@ -57,11 +57,11 @@ class PersistentLangGraphAgent:
             ),
         }
 
-    def get_active_threads(self) -> list[str]:
+    async def get_active_threads(self) -> list[str]:
         """Return the known thread identifiers seen by this app instance."""
         return self._thread_registry.list_ids()
 
-    def clear_thread(self, thread_id: str) -> bool:
+    async def clear_thread(self, thread_id: str) -> bool:
         """Forget metadata for a thread.
 
         This does not currently delete checkpoints from the backing saver. That
@@ -70,7 +70,7 @@ class PersistentLangGraphAgent:
         """
         return self._thread_registry.clear(thread_id)
 
-    def record_thread_activity(self, thread_id: str, operation: str | None) -> None:
+    async def record_thread_activity(self, thread_id: str, operation: str | None) -> None:
         """Record deterministic service-side activity for a thread."""
         self._thread_registry.record_activity(thread_id, operation)
 
