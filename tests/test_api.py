@@ -14,28 +14,18 @@ class TestAPIRoutes:
         assert "name" in data
         assert "LangGraph Database Agent" in data["name"]
 
-    def test_health_check_success(self, test_client, mock_service_dependency, mock_db_connector):
-        """Test successful health check."""
-        mock_db_connector.atest_connection.return_value = True
-        mock_service_dependency.get_active_threads.return_value = ["session1"]
-
-        response = test_client.get("/db_connection")
+    def test_healthz(self, test_client):
+        """Test lightweight liveness endpoint."""
+        response = test_client.get("/healthz")
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "connected"
-        assert data["database_connection"] == "ok"
-        assert data["active_threads"] == 1
+        assert response.json() == {"status": "ok"}
 
-    def test_health_check_failure(self, test_client, mock_service_dependency, mock_db_connector):
-        """Test health check with database connection failure."""
-        mock_db_connector.atest_connection.return_value = False
-
+    def test_db_connection_endpoint_removed(self, test_client):
+        """The old database connectivity endpoint is no longer public API."""
         response = test_client.get("/db_connection")
 
-        assert response.status_code == 503
-        data = response.json()
-        assert "Database connection failed" in data["detail"]
+        assert response.status_code == 404
 
     def test_process_query_success(self, test_client, mock_service_dependency):
         """Test successful query processing."""
