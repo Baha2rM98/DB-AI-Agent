@@ -124,15 +124,20 @@ The current stack is defined in:
 Important environment variables:
 
 ```bash
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=sakila
+# Target database: the external database users ask about.
+TARGET_DATABASE_URL=
+TARGET_DB_HOST=localhost
+TARGET_DB_PORT=5432
+TARGET_DB_USER=postgres
+TARGET_DB_PASSWORD=postgres
+TARGET_DB_NAME=sakila
+ALLOW_TARGET_WRITES=false
+ALLOW_TARGET_DELETES=false
 
 GOOGLE_API_KEY=your_google_api_key
 LLM_MODEL=gemini-1.5-pro
 
+# Internal persistence for LangGraph memory/checkpoints.
 CHECKPOINTER_BACKEND=memory
 # memory | sqlite | postgres
 
@@ -191,7 +196,10 @@ Response shape:
   "thread_id": "user-123",
   "context_info": {
     "thread_id": "user-123"
-  }
+  },
+  "sql_query": null,
+  "operation_type": null,
+  "error": null
 }
 ```
 
@@ -213,6 +221,7 @@ The system uses LangGraph checkpoints for conversational persistence.
 
 Current behavior:
 
+- target database schema and user-requested SQL execution use the target database settings
 - durable graph state is handled by LangGraph checkpointers
 - lightweight API-facing thread metadata is tracked separately
 - thread deletion currently clears tracked metadata, not checkpoint rows
