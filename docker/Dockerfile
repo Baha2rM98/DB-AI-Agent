@@ -27,9 +27,9 @@ ENV PYTHONPATH=/app
 ENV HOST=0.0.0.0
 ENV PORT=8000
 
-# Probe the root endpoint so Docker can tell when the API is ready.
+# Probe a lightweight liveness endpoint so Docker can tell when the API is ready.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/')" || exit 1
+    CMD python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/healthz')" || exit 1
 
 # Start uvicorn directly instead of shelling through a Python script.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
