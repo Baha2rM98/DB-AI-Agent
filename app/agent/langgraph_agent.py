@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, StateGraph
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +15,10 @@ class AgentState(BaseModel):
     """State passed between LangGraph workflow nodes."""
 
     query: str
-    context: Dict[str, Any] = {}
-    database_info: Dict[str, Any] = {}
-    current_plan: List[str] = []
-    execution_result: Dict[str, Any] = {}
+    context: Dict[str, Any] = Field(default_factory=dict)
+    database_info: Dict[str, Any] = Field(default_factory=dict)
+    current_plan: List[str] = Field(default_factory=list)
+    execution_result: Dict[str, Any] = Field(default_factory=dict)
     response: str = ""
     error: str = ""
 
@@ -277,9 +277,6 @@ Diagnose query issues, suggest possible solutions, and use a helpful tone.
     workflow.add_node("formulate_response", formulate_response)
     workflow.add_node("handle_error", handle_error)
 
-    workflow.add_edge("understand_query", "plan_execution")
-    workflow.add_edge("plan_execution", "execute_plan")
-    workflow.add_edge("execute_plan", "formulate_response")
     workflow.add_edge("formulate_response", END)
 
     workflow.add_conditional_edges(

@@ -97,6 +97,10 @@ class PersistentLangGraphAgent:
     def _extract_operation(result: Dict[str, Any]) -> str | None:
         """Infer the SQL operation from the result payload."""
         sql_query = result.get("sql_query", "")
+        if not sql_query and isinstance(result.get("context"), dict):
+            sql_query = result["context"].get("sql_query", "")
+        if not sql_query and isinstance(result.get("execution_details"), dict):
+            sql_query = result["execution_details"].get("sql_query", "")
         if not sql_query:
             return None
 

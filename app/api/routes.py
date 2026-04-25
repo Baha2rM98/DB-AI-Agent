@@ -64,6 +64,9 @@ async def process_query(
         affected_rows=result.affected_rows,
         thread_id=result.thread_id,
         context_info=result.context_info,
+        sql_query=result.sql_query,
+        operation_type=result.operation_type,
+        error=result.error,
     )
 
 

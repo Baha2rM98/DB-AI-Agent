@@ -43,6 +43,9 @@ class QueryResponse(BaseModel):
     affected_rows: Optional[int] = None
     thread_id: Optional[str] = None
     context_info: Optional[Dict[str, Any]] = None
+    sql_query: Optional[str] = None
+    operation_type: Optional[str] = None
+    error: Optional[str] = None
 
 
 class ThreadInfoResponse(BaseModel):

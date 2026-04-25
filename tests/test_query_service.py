@@ -81,19 +81,24 @@ class TestQueryServiceSchemaHandling:
 
     @pytest.mark.anyio
     async def test_non_schema_query_still_uses_agent(self):
-        """Regular data questions should still flow through the agent."""
+        """Regular data questions should flow through the agent and target DB."""
         mock_agent = Mock()
         mock_agent.execute_query = AsyncMock(return_value={
             "success": True,
             "response": "Found actor rows",
-            "data": [{"actor_id": 1}],
-            "affected_rows": 1,
+            "context": {"sql_query": "SELECT actor_id FROM actor"},
         })
         mock_agent.get_thread_info.return_value = {"thread_id": "thread-3"}
         mock_db = Mock()
         mock_db.get_database_schema.return_value = {"tables": {}}
         mock_db.aget_database_schema = AsyncMock(return_value={"tables": {}})
         mock_db.aget_table_names = AsyncMock(return_value=[])
+        mock_db.aexecute_query = AsyncMock(return_value={
+            "success": True,
+            "data": [{"actor_id": 1}],
+            "affected_rows": 1,
+            "operation_type": "select",
+        })
 
         service = QueryService(
             agent=mock_agent,
@@ -109,3 +114,62 @@ class TestQueryServiceSchemaHandling:
             query="Show me all actors",
             thread_id="thread-3",
         )
+        mock_db.aexecute_query.assert_awaited_once_with("SELECT actor_id FROM actor")
+        assert result.sql_query == "SELECT actor_id FROM actor"
+        assert result.operation_type == "select"
+
+    @pytest.mark.anyio
+    async def test_write_query_is_blocked_by_default(self):
+        """Generated writes should not reach the target DB unless enabled."""
+        mock_agent = Mock()
+        mock_agent.execute_query = AsyncMock(return_value={
+            "response": "I can update that actor.",
+            "context": {"sql_query": "UPDATE actor SET first_name = 'Jane' WHERE actor_id = 1"},
+        })
+        mock_agent.get_thread_info.return_value = {"thread_id": "thread-4"}
+        mock_db = Mock()
+        mock_db.get_database_schema.return_value = {"tables": {}}
+        mock_db.aget_database_schema = AsyncMock(return_value={"tables": {}})
+        mock_db.aget_table_names = AsyncMock(return_value=[])
+        mock_db.aexecute_query = AsyncMock()
+
+        service = QueryService(
+            agent=mock_agent,
+            database_gateway=mock_db,
+            schema_service=SchemaService(mock_db),
+        )
+
+        result = await service.execute_query("Rename actor 1 to Jane", "thread-4")
+
+        assert result.success is False
+        assert result.operation_type == "update"
+        assert "writes are disabled" in result.message
+        mock_db.aexecute_query.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_multiple_statements_are_blocked(self):
+        """Generated SQL must be a single statement before execution."""
+        mock_agent = Mock()
+        mock_agent.execute_query = AsyncMock(return_value={
+            "response": "Here are the actors.",
+            "context": {"sql_query": "SELECT * FROM actor; DROP TABLE actor;"},
+        })
+        mock_agent.get_thread_info.return_value = {"thread_id": "thread-5"}
+        mock_db = Mock()
+        mock_db.get_database_schema.return_value = {"tables": {}}
+        mock_db.aget_database_schema = AsyncMock(return_value={"tables": {}})
+        mock_db.aget_table_names = AsyncMock(return_value=[])
+        mock_db.aexecute_query = AsyncMock()
+
+        service = QueryService(
+            agent=mock_agent,
+            database_gateway=mock_db,
+            schema_service=SchemaService(mock_db),
+        )
+
+        result = await service.execute_query("Show actors", "thread-5")
+
+        assert result.success is False
+        assert result.operation_type == "select"
+        assert "multiple statements" in result.message
+        mock_db.aexecute_query.assert_not_called()

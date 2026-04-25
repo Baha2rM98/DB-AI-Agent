@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol
 
 from app.services.schema_service import SchemaService
+from app.services.sql_safety import SqlSafetyPolicy
 
 
 class AgentClient(Protocol):
@@ -60,6 +61,13 @@ class DatabaseClient(Protocol):
     async def atest_connection(self) -> bool:
         """Verify that the configured database is reachable asynchronously."""
 
+    async def aexecute_query(
+        self,
+        query: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Execute a SQL query asynchronously and return a normalized result."""
+
 
 @dataclass(slots=True)
 class QueryResult:
@@ -72,6 +80,9 @@ class QueryResult:
     data: Optional[List[Dict[str, Any]]] = None
     affected_rows: Optional[int] = None
     context_info: Dict[str, Any] = field(default_factory=dict)
+    sql_query: Optional[str] = None
+    operation_type: Optional[str] = None
+    error: Optional[str] = None
 
 
 class QueryService:
@@ -82,11 +93,17 @@ class QueryService:
         agent: AgentClient,
         database_gateway: DatabaseClient,
         schema_service: SchemaService,
+        allow_writes: bool = False,
+        allow_deletes: bool = False,
     ) -> None:
         """Store the dependencies required to serve query requests."""
         self._agent = agent
         self._database_gateway = database_gateway
         self._schema_service = schema_service
+        self._sql_safety = SqlSafetyPolicy(
+            allow_writes=allow_writes,
+            allow_deletes=allow_deletes,
+        )
 
     async def execute_query(self, query: str, thread_id: str) -> QueryResult:
         """Execute a natural-language query and normalize the result payload."""
@@ -94,19 +111,54 @@ class QueryService:
         if schema_result is not None:
             return schema_result
 
-        result = await self._agent.execute_query(query=query, thread_id=thread_id)
+        agent_result = await self._agent.execute_query(query=query, thread_id=thread_id)
         context_info = self._build_context_info(thread_id)
-        agent_response = result.get("agent_response") or result.get("response", "")
-        message = result.get("message") or agent_response
+        agent_response = self._extract_agent_response(agent_result)
+        sql_query = self._extract_sql_query(agent_result)
+
+        if not sql_query:
+            message = agent_response or "The agent did not generate an executable SQL query."
+            return QueryResult(
+                success=False,
+                message=message,
+                agent_response=agent_response,
+                thread_id=thread_id,
+                context_info=context_info,
+                error="No executable SQL query was generated.",
+            )
+
+        validation = self._sql_safety.validate(sql_query)
+        if not validation.allowed:
+            return QueryResult(
+                success=False,
+                message=validation.reason,
+                agent_response=agent_response,
+                thread_id=thread_id,
+                context_info=context_info,
+                sql_query=sql_query,
+                operation_type=validation.operation_type,
+                error=validation.reason,
+            )
+
+        execution_result = await self._database_gateway.aexecute_query(sql_query)
+        execution_success = execution_result.get("success", False)
+        message = (
+            agent_response
+            if execution_success and agent_response
+            else execution_result.get("error", "Query executed successfully.")
+        )
 
         return QueryResult(
-            success=result.get("success", False),
+            success=execution_success,
             message=message,
             agent_response=agent_response,
-            data=result.get("data"),
-            affected_rows=result.get("affected_rows"),
+            data=execution_result.get("data"),
+            affected_rows=execution_result.get("affected_rows"),
             thread_id=thread_id,
             context_info=context_info,
+            sql_query=sql_query,
+            operation_type=execution_result.get("operation_type", validation.operation_type),
+            error=execution_result.get("error"),
         )
 
     async def get_health_snapshot(self) -> Dict[str, Any]:
@@ -133,6 +185,36 @@ class QueryService:
         """Fetch contextual information for the current conversation thread."""
         thread_info = self._agent.get_thread_info(thread_id)
         return thread_info if thread_info.get("thread_id") else {}
+
+    @staticmethod
+    def _extract_agent_response(result: Dict[str, Any]) -> str:
+        """Extract the natural-language agent response from known result shapes."""
+        response = result.get("agent_response") or result.get("response")
+        if response:
+            return response
+
+        execution_details = result.get("execution_details")
+        if isinstance(execution_details, dict) and execution_details.get("response"):
+            return execution_details["response"]
+
+        return ""
+
+    @staticmethod
+    def _extract_sql_query(result: Dict[str, Any]) -> Optional[str]:
+        """Extract SQL from top-level, context, or execution detail payloads."""
+        sql_query = result.get("sql_query")
+        if sql_query:
+            return sql_query
+
+        context = result.get("context")
+        if isinstance(context, dict) and context.get("sql_query"):
+            return context["sql_query"]
+
+        execution_details = result.get("execution_details")
+        if isinstance(execution_details, dict) and execution_details.get("sql_query"):
+            return execution_details["sql_query"]
+
+        return None
 
     async def _try_handle_schema_query(self, query: str, thread_id: str) -> QueryResult | None:
         """Answer simple schema questions directly without invoking the LLM."""

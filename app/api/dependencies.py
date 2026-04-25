@@ -16,16 +16,21 @@ def get_settings() -> Settings:
 
 
 @lru_cache
-def get_database_gateway() -> SQLAlchemyDatabaseGateway:
-    """Create the shared database gateway used by application services."""
+def get_target_database_gateway() -> SQLAlchemyDatabaseGateway:
+    """Create the gateway for the external database users ask about."""
     settings = get_settings()
-    return SQLAlchemyDatabaseGateway(settings.database_url)
+    return SQLAlchemyDatabaseGateway(settings.target_database_url)
+
+
+def get_database_gateway() -> SQLAlchemyDatabaseGateway:
+    """Backward-compatible dependency alias for the target database gateway."""
+    return get_target_database_gateway()
 
 
 @lru_cache
 def get_schema_service() -> SchemaService:
-    """Create the schema formatting service."""
-    return SchemaService(get_database_gateway())
+    """Create the schema service for the external target database."""
+    return SchemaService(get_target_database_gateway())
 
 
 @lru_cache
@@ -35,6 +40,8 @@ def get_query_service() -> QueryService:
     schema_service = get_schema_service()
     return QueryService(
         agent=PersistentLangGraphAgent(settings=settings, schema_service=schema_service),
-        database_gateway=get_database_gateway(),
+        database_gateway=get_target_database_gateway(),
         schema_service=schema_service,
+        allow_writes=settings.allow_target_writes,
+        allow_deletes=settings.allow_target_deletes,
     )
