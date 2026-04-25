@@ -155,17 +155,15 @@ LOG_LEVEL=INFO
 
 Basic app metadata.
 
-### `GET /db_connection`
+### `GET /healthz`
 
-Checks DB connectivity and returns active thread count.
+Lightweight app liveness check for Docker and process monitoring.
 
 Example response:
 
 ```json
 {
-  "status": "connected",
-  "database_connection": "ok",
-  "active_threads": 2
+  "status": "ok"
 }
 ```
 
