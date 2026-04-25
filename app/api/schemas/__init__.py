@@ -13,12 +13,10 @@ class RootResponse(BaseModel):
     description: str
 
 
-class HealthResponse(BaseModel):
-    """Health-check response describing database connectivity."""
+class HealthzResponse(BaseModel):
+    """Lightweight process health response."""
 
     status: str
-    database_connection: str
-    active_threads: int = 0
 
 
 class QueryRequest(BaseModel):
