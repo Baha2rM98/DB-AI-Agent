@@ -137,6 +137,14 @@ ALLOW_TARGET_DELETES=false
 # Seconds to cache the inspected target-database schema (0 disables caching).
 SCHEMA_CACHE_TTL_SECONDS=300
 
+# Result-size safety: auto-LIMIT for unbounded SELECTs and a hard
+# materialization cap. Connection pool tuning for concurrent load.
+MAX_SELECT_ROWS=1000
+MAX_RESULT_ROWS=10000
+DB_POOL_SIZE=10
+DB_MAX_OVERFLOW=20
+DB_POOL_RECYCLE=1800
+
 GOOGLE_API_KEY=your_google_api_key
 LLM_MODEL=gemini-1.5-flash
 

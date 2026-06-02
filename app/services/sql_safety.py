@@ -3,6 +3,10 @@
 from dataclasses import dataclass
 import re
 
+# Matches a trailing `LIMIT n [OFFSET m]` so an already-bounded query is left
+# alone instead of getting a second, conflicting LIMIT appended.
+_LIMIT_TAIL_RE = re.compile(r"\blimit\s+\d+(\s+offset\s+\d+)?$", re.IGNORECASE)
+
 
 @dataclass(frozen=True, slots=True)
 class SqlValidationResult:
@@ -16,10 +20,33 @@ class SqlValidationResult:
 class SqlSafetyPolicy:
     """Validate generated SQL before it can touch the target database."""
 
-    def __init__(self, allow_writes: bool = False, allow_deletes: bool = False) -> None:
-        """Store the configured target database write policy."""
+    def __init__(
+        self,
+        allow_writes: bool = False,
+        allow_deletes: bool = False,
+        max_select_rows: int = 0,
+    ) -> None:
+        """Store the configured target database write policy.
+
+        ``max_select_rows`` of 0 disables automatic row limiting.
+        """
         self._allow_writes = allow_writes
         self._allow_deletes = allow_deletes
+        self._max_select_rows = max_select_rows
+
+    def enforce_row_limit(self, sql_query: str, operation_type: str) -> str:
+        """Append a LIMIT to an unbounded SELECT to cap result-set size.
+
+        Statements that already carry a trailing LIMIT, non-SELECT statements,
+        and a disabled policy (``max_select_rows <= 0``) pass through unchanged.
+        """
+        if operation_type != "select" or self._max_select_rows <= 0:
+            return sql_query
+
+        trimmed = sql_query.strip().rstrip(";").rstrip()
+        if _LIMIT_TAIL_RE.search(trimmed):
+            return sql_query
+        return f"{trimmed} LIMIT {self._max_select_rows}"
 
     def validate(self, sql_query: str) -> SqlValidationResult:
         """Return whether a SQL statement is allowed to execute."""

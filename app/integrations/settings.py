@@ -19,6 +19,11 @@ class Settings:
     allow_target_writes: bool
     allow_target_deletes: bool
     schema_cache_ttl_seconds: float
+    max_select_rows: int
+    max_result_rows: int
+    db_pool_size: int
+    db_max_overflow: int
+    db_pool_recycle: int
     checkpointer_backend: str
     checkpointer_database_url: str
     checkpointer_sqlite_path: str
@@ -49,6 +54,11 @@ class Settings:
             allow_target_writes=_env_flag("ALLOW_TARGET_WRITES", default=False),
             allow_target_deletes=_env_flag("ALLOW_TARGET_DELETES", default=False),
             schema_cache_ttl_seconds=float(os.getenv("SCHEMA_CACHE_TTL_SECONDS", "300")),
+            max_select_rows=int(os.getenv("MAX_SELECT_ROWS", "1000")),
+            max_result_rows=int(os.getenv("MAX_RESULT_ROWS", "10000")),
+            db_pool_size=int(os.getenv("DB_POOL_SIZE", "10")),
+            db_max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "20")),
+            db_pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "1800")),
             checkpointer_backend=os.getenv("CHECKPOINTER_BACKEND", "memory"),
             checkpointer_database_url=os.getenv("CHECKPOINTER_DATABASE_URL", ""),
             checkpointer_sqlite_path=os.getenv("CHECKPOINTER_SQLITE_PATH", "checkpoints.db"),

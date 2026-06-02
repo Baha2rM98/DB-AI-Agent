@@ -20,25 +20,62 @@ logger = logging.getLogger(__name__)
 class SQLAlchemyDatabaseGateway:
     """Execute SQL queries and inspect schemas through SQLAlchemy."""
 
-    def __init__(self, connection_string: str) -> None:
+    def __init__(
+        self,
+        connection_string: str,
+        *,
+        pool_size: int = 10,
+        max_overflow: int = 20,
+        pool_recycle: int = 1800,
+        pool_pre_ping: bool = True,
+        max_result_rows: int = 10000,
+    ) -> None:
         """Create the async SQLAlchemy engine for the configured database.
 
-        The synchronous engine backs only inspection helpers and the test
-        suite, so it is created lazily (see the ``engine`` property) to avoid
-        holding a second idle connection pool in production.
+        The connection pool is tuned for concurrent request load:
+        ``pool_pre_ping`` discards connections the server has dropped, and
+        ``pool_recycle`` retires long-lived ones. The synchronous engine backs
+        only inspection helpers and the test suite, so it is created lazily
+        (see the ``engine`` property) to avoid a second idle pool in production.
+        ``max_result_rows`` caps how many rows are materialized into memory.
         """
         self.connection_string = connection_string
         self.async_connection_string = self._build_async_connection_string(connection_string)
+        self._engine_kwargs: Dict[str, Any] = {
+            "pool_size": pool_size,
+            "max_overflow": max_overflow,
+            "pool_recycle": pool_recycle,
+            "pool_pre_ping": pool_pre_ping,
+        }
+        self._max_result_rows = max_result_rows
         self._sync_engine = None
-        self.async_engine = create_async_engine(self.async_connection_string)
+        self.async_engine = create_async_engine(
+            self.async_connection_string, **self._engine_kwargs
+        )
         self._pk_cache: Dict[str, List[str]] = {}
 
     @property
     def engine(self):
         """Return the synchronous engine, creating it on first use."""
         if self._sync_engine is None:
-            self._sync_engine = create_engine(self.connection_string)
+            self._sync_engine = create_engine(self.connection_string, **self._engine_kwargs)
         return self._sync_engine
+
+    def _build_rows(self, result: Any) -> List[Dict[str, Any]]:
+        """Materialize result rows into dicts, capped at ``max_result_rows``.
+
+        Bounds Python-side memory for unexpectedly large result sets. When the
+        cap is reached the truncation is logged rather than silently hidden.
+        """
+        columns = result.keys()
+        cap = self._max_result_rows
+        raw_rows = result.fetchmany(cap) if cap and cap > 0 else result.fetchall()
+        rows = [dict(zip(columns, row)) for row in raw_rows]
+        if cap and cap > 0 and len(rows) >= cap:
+            logger.warning(
+                "Result truncated to the %d-row cap; additional rows may exist.", cap
+            )
+        return rows
 
     def test_connection(self) -> bool:
         """Return whether the database accepts a simple probe query."""
@@ -91,8 +128,7 @@ class SQLAlchemyDatabaseGateway:
                     )
 
                 if operation_type == "select" or result.returns_rows:
-                    columns = result.keys()
-                    rows = [dict(zip(columns, row)) for row in result.fetchall()]
+                    rows = self._build_rows(result)
                     affected_rows = (
                         len(rows)
                         if operation_type in ["insert", "update"] and rows
@@ -157,8 +193,7 @@ class SQLAlchemyDatabaseGateway:
                     )
 
                 if operation_type == "select" or result.returns_rows:
-                    columns = result.keys()
-                    rows = [dict(zip(columns, row)) for row in result.fetchall()]
+                    rows = self._build_rows(result)
                     affected_rows = (
                         len(rows)
                         if operation_type in ["insert", "update"] and rows

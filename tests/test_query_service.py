@@ -155,6 +155,37 @@ class TestQueryServiceSchemaHandling:
         mock_db.execute_query.assert_not_called()
 
     @pytest.mark.anyio
+    async def test_select_gets_row_limit_applied(self):
+        """An unbounded SELECT should be executed with an injected LIMIT."""
+        mock_agent = Mock()
+        mock_agent.execute_query = AsyncMock(return_value={
+            "response": "Here are the actors.",
+            "context": {"sql_query": "SELECT actor_id FROM actor"},
+        })
+        mock_agent.get_thread_info = AsyncMock(return_value={"thread_id": "thread-6"})
+        mock_db = Mock()
+        mock_db.aget_database_schema = AsyncMock(return_value={"tables": {}})
+        mock_db.aget_table_names = AsyncMock(return_value=[])
+        mock_db.aexecute_query = AsyncMock(return_value={
+            "success": True,
+            "data": [{"actor_id": 1}],
+            "affected_rows": 1,
+            "operation_type": "select",
+        })
+
+        service = QueryService(
+            agent=mock_agent,
+            database_gateway=mock_db,
+            schema_service=SchemaService(mock_db),
+            max_select_rows=500,
+        )
+
+        result = await service.execute_query("Show me all actors", "thread-6")
+
+        mock_db.aexecute_query.assert_awaited_once_with("SELECT actor_id FROM actor LIMIT 500")
+        assert result.sql_query == "SELECT actor_id FROM actor LIMIT 500"
+
+    @pytest.mark.anyio
     async def test_multiple_statements_are_blocked(self):
         """Generated SQL must be a single statement before execution."""
         mock_agent = Mock()

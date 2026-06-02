@@ -69,6 +69,7 @@ class QueryService:
         schema_service: SchemaService,
         allow_writes: bool = False,
         allow_deletes: bool = False,
+        max_select_rows: int = 0,
     ) -> None:
         """Store the dependencies required to serve query requests."""
         self._agent = agent
@@ -77,6 +78,7 @@ class QueryService:
         self._sql_safety = SqlSafetyPolicy(
             allow_writes=allow_writes,
             allow_deletes=allow_deletes,
+            max_select_rows=max_select_rows,
         )
 
     async def execute_query(self, query: str, thread_id: str) -> QueryResult:
@@ -114,7 +116,8 @@ class QueryService:
                 error=validation.reason,
             )
 
-        execution_result = await self._target_database_gateway.aexecute_query(sql_query)
+        sql_to_execute = self._sql_safety.enforce_row_limit(sql_query, validation.operation_type)
+        execution_result = await self._target_database_gateway.aexecute_query(sql_to_execute)
         execution_success = execution_result.get("success", False)
         message = (
             agent_response
@@ -130,7 +133,7 @@ class QueryService:
             affected_rows=execution_result.get("affected_rows"),
             thread_id=thread_id,
             context_info=context_info,
-            sql_query=sql_query,
+            sql_query=sql_to_execute,
             operation_type=execution_result.get("operation_type", validation.operation_type),
             error=execution_result.get("error"),
         )

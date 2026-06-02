@@ -19,7 +19,13 @@ def get_settings() -> Settings:
 def get_target_database_gateway() -> SQLAlchemyDatabaseGateway:
     """Create the gateway for the external database users ask about."""
     settings = get_settings()
-    return SQLAlchemyDatabaseGateway(settings.target_database_url)
+    return SQLAlchemyDatabaseGateway(
+        settings.target_database_url,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_recycle=settings.db_pool_recycle,
+        max_result_rows=settings.max_result_rows,
+    )
 
 
 @lru_cache
@@ -43,4 +49,5 @@ def get_query_service() -> QueryService:
         schema_service=schema_service,
         allow_writes=settings.allow_target_writes,
         allow_deletes=settings.allow_target_deletes,
+        max_select_rows=settings.max_select_rows,
     )

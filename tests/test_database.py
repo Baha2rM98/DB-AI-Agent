@@ -74,6 +74,7 @@ class TestSQLAlchemyDatabaseGateway:
         mock_result.returns_rows = True
         mock_result.keys.return_value = ['id', 'name']
         mock_result.fetchall.return_value = [(1, 'John'), (2, 'Jane')]
+        mock_result.fetchmany.return_value = [(1, 'John'), (2, 'Jane')]
         mock_result.rowcount = 2
 
         mock_conn.execute.return_value = mock_result
@@ -124,6 +125,7 @@ class TestSQLAlchemyDatabaseGateway:
         mock_result.returns_rows = True
         mock_result.keys.return_value = ['id', 'name']
         mock_result.fetchall.return_value = [(1, 'John')]
+        mock_result.fetchmany.return_value = [(1, 'John')]
         mock_result.rowcount = 1
 
         mock_conn.execute.return_value = mock_result
@@ -204,6 +206,7 @@ class TestSQLAlchemyDatabaseGateway:
         mock_result.returns_rows = True
         mock_result.keys.return_value = ['id', 'name']
         mock_result.fetchall.return_value = [(1, 'John')]
+        mock_result.fetchmany.return_value = [(1, 'John')]
         mock_result.rowcount = 1
 
         mock_conn.execute.return_value = mock_result
@@ -266,6 +269,7 @@ class TestSQLAlchemyDatabaseGateway:
         mock_result.returns_rows = True
         mock_result.keys.return_value = ['id', 'name']
         mock_result.fetchall.return_value = [(1, 'John')]
+        mock_result.fetchmany.return_value = [(1, 'John')]
         mock_result.rowcount = 1
         mock_async_connection.execute = AsyncMock(return_value=mock_result)
         mock_async_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_async_connection)
@@ -358,6 +362,73 @@ class TestSQLAlchemyDatabaseGatewayInternals:
         assert result["primary_keys"] == ["actor_id"]
         assert result["foreign_keys"][0]["referred_table"] == "address"
         assert result["indices"] == [{"name": "idx_actor_last_name"}]
+
+    @patch('app.integrations.database.create_async_engine')
+    @patch('app.integrations.database.create_engine')
+    def test_pool_settings_passed_to_async_engine(
+        self, mock_create_engine, mock_create_async_engine
+    ):
+        """Pool tuning should reach the async engine factory."""
+        SQLAlchemyDatabaseGateway(
+            "postgresql://u:p@h/db",
+            pool_size=7,
+            max_overflow=3,
+            pool_recycle=60,
+        )
+
+        _, kwargs = mock_create_async_engine.call_args
+        assert kwargs["pool_size"] == 7
+        assert kwargs["max_overflow"] == 3
+        assert kwargs["pool_recycle"] == 60
+        assert kwargs["pool_pre_ping"] is True
+
+    @patch('app.integrations.database.create_async_engine')
+    @patch('app.integrations.database.create_engine')
+    def test_select_is_capped_at_max_result_rows(
+        self, mock_create_engine, mock_create_async_engine
+    ):
+        """A SELECT should fetch at most max_result_rows rows."""
+        mock_engine = Mock()
+        mock_conn = Mock()
+        mock_result = Mock()
+        mock_result.returns_rows = True
+        mock_result.keys.return_value = ['id']
+        mock_result.fetchmany.return_value = [(1,), (2,)]
+        mock_result.rowcount = 2
+        mock_conn.execute.return_value = mock_result
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
+        mock_create_engine.return_value = mock_engine
+
+        connector = SQLAlchemyDatabaseGateway("test://connection", max_result_rows=2)
+        result = connector.execute_query("SELECT * FROM big_table")
+
+        assert len(result["data"]) == 2
+        mock_result.fetchmany.assert_called_once_with(2)
+        mock_result.fetchall.assert_not_called()
+
+    @patch('app.integrations.database.create_async_engine')
+    @patch('app.integrations.database.create_engine')
+    def test_zero_cap_uses_fetchall(self, mock_create_engine, mock_create_async_engine):
+        """A zero cap disables the bound and reads the full result set."""
+        mock_engine = Mock()
+        mock_conn = Mock()
+        mock_result = Mock()
+        mock_result.returns_rows = True
+        mock_result.keys.return_value = ['id']
+        mock_result.fetchall.return_value = [(1,)]
+        mock_result.rowcount = 1
+        mock_conn.execute.return_value = mock_result
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
+        mock_create_engine.return_value = mock_engine
+
+        connector = SQLAlchemyDatabaseGateway("test://connection", max_result_rows=0)
+        result = connector.execute_query("SELECT * FROM small_table")
+
+        assert len(result["data"]) == 1
+        mock_result.fetchall.assert_called_once()
+        mock_result.fetchmany.assert_not_called()
 
 
 @pytest.mark.integration
