@@ -134,6 +134,9 @@ TARGET_DB_NAME=sakila
 ALLOW_TARGET_WRITES=false
 ALLOW_TARGET_DELETES=false
 
+# Seconds to cache the inspected target-database schema (0 disables caching).
+SCHEMA_CACHE_TTL_SECONDS=300
+
 GOOGLE_API_KEY=your_google_api_key
 LLM_MODEL=gemini-1.5-flash
 

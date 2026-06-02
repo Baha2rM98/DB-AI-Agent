@@ -25,7 +25,11 @@ def get_target_database_gateway() -> SQLAlchemyDatabaseGateway:
 @lru_cache
 def get_schema_service() -> SchemaService:
     """Create the schema service for the external target database."""
-    return SchemaService(get_target_database_gateway())
+    settings = get_settings()
+    return SchemaService(
+        get_target_database_gateway(),
+        cache_ttl_seconds=settings.schema_cache_ttl_seconds,
+    )
 
 
 @lru_cache

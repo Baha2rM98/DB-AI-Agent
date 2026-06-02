@@ -1,7 +1,9 @@
 """Schema access helpers for the simplified service layer."""
 
+import asyncio
 from dataclasses import dataclass
 import re
+import time
 from typing import Any, Dict, Optional, Protocol
 
 
@@ -26,13 +28,55 @@ class SchemaQuery:
 class SchemaService:
     """Provide database schema information to the rest of the app."""
 
-    def __init__(self, database_gateway: SchemaDatabaseClient) -> None:
-        """Store the database gateway dependency."""
+    def __init__(
+        self,
+        database_gateway: SchemaDatabaseClient,
+        cache_ttl_seconds: float = 300.0,
+    ) -> None:
+        """Store the database gateway dependency and configure schema caching."""
         self._database_gateway = database_gateway
+        self._cache_ttl_seconds = cache_ttl_seconds
+        self._schema_cache: Optional[Dict[str, Any]] = None
+        self._schema_cache_expiry: float = 0.0
+        self._cache_lock = asyncio.Lock()
 
     async def get_database_schema(self) -> Dict[str, Any]:
-        """Return the raw database schema from the configured gateway."""
-        return await self._database_gateway.aget_database_schema()
+        """Return the database schema, served from a TTL cache when fresh.
+
+        Inspecting a full database schema is expensive, so the result is cached
+        for ``cache_ttl_seconds`` and shared across requests. A lock guards the
+        refresh so concurrent callers don't trigger a stampede of inspections.
+        """
+        if self._is_cache_fresh():
+            return self._schema_cache  # type: ignore[return-value]
+
+        async with self._cache_lock:
+            # Re-check inside the lock: another coroutine may have refreshed
+            # the cache while we were waiting to acquire it.
+            if self._is_cache_fresh():
+                return self._schema_cache  # type: ignore[return-value]
+            return await self._refresh_locked()
+
+    async def refresh(self) -> Dict[str, Any]:
+        """Force a schema refresh, bypassing and replacing the cached value."""
+        async with self._cache_lock:
+            return await self._refresh_locked()
+
+    def invalidate(self) -> None:
+        """Drop the cached schema so the next read re-inspects the database."""
+        self._schema_cache = None
+        self._schema_cache_expiry = 0.0
+
+    def _is_cache_fresh(self) -> bool:
+        """Return whether a cached schema exists and has not yet expired."""
+        return self._schema_cache is not None and time.monotonic() < self._schema_cache_expiry
+
+    async def _refresh_locked(self) -> Dict[str, Any]:
+        """Fetch and cache the schema. Caller must hold ``_cache_lock``."""
+        schema = await self._database_gateway.aget_database_schema()
+        self._schema_cache = schema
+        self._schema_cache_expiry = time.monotonic() + self._cache_ttl_seconds
+        return schema
 
     async def list_tables(self) -> list[str]:
         """Return the available table names in deterministic order."""

@@ -21,11 +21,24 @@ class SQLAlchemyDatabaseGateway:
     """Execute SQL queries and inspect schemas through SQLAlchemy."""
 
     def __init__(self, connection_string: str) -> None:
-        """Create sync and async SQLAlchemy engines for the configured database."""
+        """Create the async SQLAlchemy engine for the configured database.
+
+        The synchronous engine backs only inspection helpers and the test
+        suite, so it is created lazily (see the ``engine`` property) to avoid
+        holding a second idle connection pool in production.
+        """
         self.connection_string = connection_string
         self.async_connection_string = self._build_async_connection_string(connection_string)
-        self.engine = create_engine(self.connection_string)
+        self._sync_engine = None
         self.async_engine = create_async_engine(self.async_connection_string)
+        self._pk_cache: Dict[str, List[str]] = {}
+
+    @property
+    def engine(self):
+        """Return the synchronous engine, creating it on first use."""
+        if self._sync_engine is None:
+            self._sync_engine = create_engine(self.connection_string)
+        return self._sync_engine
 
     def test_connection(self) -> bool:
         """Return whether the database accepts a simple probe query."""
@@ -225,8 +238,10 @@ class SQLAlchemyDatabaseGateway:
             return await connection.run_sync(self._inspect_database_schema)
 
     async def aclose(self) -> None:
-        """Dispose of the async engine cleanly during app shutdown."""
+        """Dispose of the engines cleanly during app shutdown."""
         await self.async_engine.dispose()
+        if self._sync_engine is not None:
+            self._sync_engine.dispose()
 
     def _detect_operation_type(self, query: str) -> str:
         """Classify the SQL statement type from the raw query text."""
@@ -276,22 +291,28 @@ class SQLAlchemyDatabaseGateway:
             return f"{query.rstrip(';')} RETURNING *"
 
     async def _aadd_returning_clause(self, query: str, operation_type: str) -> str:
-        """Append a RETURNING clause using async inspection when needed."""
+        """Append a RETURNING clause, resolving primary keys from a cache."""
         if "returning" in query.lower():
             return query
 
-        table_name = None
-        if operation_type == "insert":
-            match = re.search(r"insert\s+into\s+(\w+)", query.lower())
-            if match:
-                table_name = match.group(1)
-        elif operation_type == "update":
-            match = re.search(r"update\s+(\w+)", query.lower())
-            if match:
-                table_name = match.group(1)
-
+        table_name = self._extract_write_table(query, operation_type)
         if not table_name:
             return query
+
+        primary_keys = await self._aget_primary_keys(table_name)
+        returning_columns = ", ".join(primary_keys) if primary_keys else "*"
+        return f"{query.rstrip(';')} RETURNING {returning_columns}"
+
+    async def _aget_primary_keys(self, table_name: str) -> List[str]:
+        """Return a table's primary-key columns, caching successful lookups.
+
+        Without the cache every INSERT/UPDATE would open a fresh connection to
+        re-inspect the same table. Transient failures are not cached so a later
+        write can retry; an empty list maps to ``RETURNING *`` at the call site.
+        """
+        cached = self._pk_cache.get(table_name)
+        if cached is not None:
+            return cached
 
         try:
             async with self.async_engine.connect() as connection:
@@ -300,15 +321,27 @@ class SQLAlchemyDatabaseGateway:
                     .get_pk_constraint(table_name)
                     .get("constrained_columns", [])
                 )
-            returning_columns = ", ".join(primary_keys) if primary_keys else "*"
-            return f"{query.rstrip(';')} RETURNING {returning_columns}"
         except Exception as exc:
             logger.warning(
                 "Could not determine async RETURNING clause for table %s: %s",
                 table_name,
                 exc,
             )
-            return f"{query.rstrip(';')} RETURNING *"
+            return []
+
+        self._pk_cache[table_name] = primary_keys
+        return primary_keys
+
+    @staticmethod
+    def _extract_write_table(query: str, operation_type: str) -> Optional[str]:
+        """Extract the target table name from an INSERT or UPDATE statement."""
+        if operation_type == "insert":
+            match = re.search(r"insert\s+into\s+(\w+)", query.lower())
+        elif operation_type == "update":
+            match = re.search(r"update\s+(\w+)", query.lower())
+        else:
+            match = None
+        return match.group(1) if match else None
 
     def _normalize_sql_error(self, error_message: str) -> str:
         """Map low-level SQL errors to friendlier application messages."""
@@ -369,7 +402,12 @@ class SQLAlchemyDatabaseGateway:
         }
 
     def _inspect_database_schema(self, sync_connection: Any) -> Dict[str, Any]:
-        """Build database schema details from a synchronous connection context."""
+        """Build database schema details from a synchronous connection context.
+
+        Uses SQLAlchemy 2.0 bulk reflection (``get_multi_*``) so each metadata
+        kind costs one round-trip per schema instead of one per table. For a
+        large database this turns O(tables) round-trips into O(schemas).
+        """
         inspector = inspect(sync_connection)
         schemas = [
             schema_name
@@ -379,13 +417,56 @@ class SQLAlchemyDatabaseGateway:
         database_schema = {"database_name": sync_connection.engine.url.database, "tables": {}}
 
         for schema_name in sorted(schemas):
-            table_names = sorted(inspector.get_table_names(schema=schema_name))
-            for table_name in table_names:
+            columns_by_table = inspector.get_multi_columns(schema=schema_name)
+            pk_by_table = inspector.get_multi_pk_constraint(schema=schema_name)
+            fks_by_table = inspector.get_multi_foreign_keys(schema=schema_name)
+            indexes_by_table = inspector.get_multi_indexes(schema=schema_name)
+
+            for table_key in sorted(columns_by_table.keys()):
+                table_name = table_key[1]
                 qualified_name = f"{schema_name}.{table_name}"
-                database_schema["tables"][qualified_name] = self._inspect_table_schema(
-                    sync_connection,
-                    table_name,
+                database_schema["tables"][qualified_name] = self._assemble_table_schema(
                     schema_name,
+                    table_name,
+                    columns_by_table.get(table_key, []),
+                    pk_by_table.get(table_key, {}),
+                    fks_by_table.get(table_key, []),
+                    indexes_by_table.get(table_key, []),
                 )
 
         return database_schema
+
+    @staticmethod
+    def _assemble_table_schema(
+        schema_name: str,
+        table_name: str,
+        columns: List[Dict[str, Any]],
+        pk_constraint: Dict[str, Any],
+        foreign_keys: List[Dict[str, Any]],
+        indexes: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Shape pre-fetched bulk-reflection data like ``_inspect_table_schema``."""
+        return {
+            "schema": schema_name,
+            "table_name": table_name,
+            "columns": [
+                {
+                    "name": column["name"],
+                    "type": str(column["type"]),
+                    "nullable": column.get("nullable", True),
+                    "default": str(column.get("default", "")),
+                }
+                for column in columns
+            ],
+            "primary_keys": pk_constraint.get("constrained_columns", []) if pk_constraint else [],
+            "foreign_keys": [
+                {
+                    "constrained_columns": foreign_key["constrained_columns"],
+                    "referred_schema": foreign_key.get("referred_schema"),
+                    "referred_table": foreign_key["referred_table"],
+                    "referred_columns": foreign_key["referred_columns"],
+                }
+                for foreign_key in foreign_keys
+            ],
+            "indices": indexes,
+        }

@@ -18,6 +18,7 @@ class Settings:
     llm_model: str
     allow_target_writes: bool
     allow_target_deletes: bool
+    schema_cache_ttl_seconds: float
     checkpointer_backend: str
     checkpointer_database_url: str
     checkpointer_sqlite_path: str
@@ -47,6 +48,7 @@ class Settings:
             llm_model=os.getenv("LLM_MODEL", "gemini-1.5-flash"),
             allow_target_writes=_env_flag("ALLOW_TARGET_WRITES", default=False),
             allow_target_deletes=_env_flag("ALLOW_TARGET_DELETES", default=False),
+            schema_cache_ttl_seconds=float(os.getenv("SCHEMA_CACHE_TTL_SECONDS", "300")),
             checkpointer_backend=os.getenv("CHECKPOINTER_BACKEND", "memory"),
             checkpointer_database_url=os.getenv("CHECKPOINTER_DATABASE_URL", ""),
             checkpointer_sqlite_path=os.getenv("CHECKPOINTER_SQLITE_PATH", "checkpoints.db"),
