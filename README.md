@@ -135,7 +135,7 @@ ALLOW_TARGET_WRITES=false
 ALLOW_TARGET_DELETES=false
 
 GOOGLE_API_KEY=your_google_api_key
-LLM_MODEL=gemini-1.5-pro
+LLM_MODEL=gemini-1.5-flash
 
 # Internal persistence for LangGraph memory/checkpoints.
 CHECKPOINTER_BACKEND=memory

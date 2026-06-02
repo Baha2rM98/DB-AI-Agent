@@ -44,7 +44,7 @@ class Settings:
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             target_database_url=target_database_url,
             google_api_key=os.getenv("GOOGLE_API_KEY", ""),
-            llm_model=os.getenv("LLM_MODEL", "gemini-1.5-pro"),
+            llm_model=os.getenv("LLM_MODEL", "gemini-1.5-flash"),
             allow_target_writes=_env_flag("ALLOW_TARGET_WRITES", default=False),
             allow_target_deletes=_env_flag("ALLOW_TARGET_DELETES", default=False),
             checkpointer_backend=os.getenv("CHECKPOINTER_BACKEND", "memory"),
