@@ -245,14 +245,30 @@ Run the suite with:
 
 Current status after the latest refactor:
 
-- `45 passed, 1 skipped`
+- `67 passed, 1 skipped`
 
 Test files:
 
 - [tests/test_agent.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_agent.py)
 - [tests/test_api.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_api.py)
 - [tests/test_database.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_database.py)
+- [tests/test_persistent_agent.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_persistent_agent.py)
 - [tests/test_query_service.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_query_service.py)
+- [tests/test_schema_service.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_schema_service.py)
+- [tests/test_sql_safety.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_sql_safety.py)
+
+## Performance
+
+The request path is tuned to minimize redundant work:
+
+- the inspected schema is cached (`SCHEMA_CACHE_TTL_SECONDS`) instead of being
+  re-read per request, and is reflected in bulk (one round-trip per schema)
+- the LangGraph workflow is a single SQL-generation call (not a 4-stage chain),
+  compiled once and reused across requests
+- the prompt receives a compact schema summary rather than the full inspector payload
+- logging is non-blocking (queue + background writer) so the event loop never waits on disk
+- SELECTs are auto-bounded (`MAX_SELECT_ROWS`) and result materialization is
+  capped (`MAX_RESULT_ROWS`); the connection pool uses pre-ping and recycling
 
 ## Development Notes
 

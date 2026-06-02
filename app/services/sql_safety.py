@@ -7,6 +7,9 @@ import re
 # alone instead of getting a second, conflicting LIMIT appended.
 _LIMIT_TAIL_RE = re.compile(r"\blimit\s+\d+(\s+offset\s+\d+)?$", re.IGNORECASE)
 
+# Leading SQL keyword, used to classify the operation type.
+_OPERATION_RE = re.compile(r"^\s*([a-zA-Z]+)")
+
 
 @dataclass(frozen=True, slots=True)
 class SqlValidationResult:
@@ -93,7 +96,7 @@ class SqlSafetyPolicy:
 
 def detect_operation_type(sql_query: str) -> str:
     """Classify the leading SQL operation."""
-    match = re.match(r"^\s*([a-zA-Z]+)", sql_query)
+    match = _OPERATION_RE.match(sql_query)
     return match.group(1).lower() if match else "unknown"
 
 

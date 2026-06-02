@@ -6,6 +6,17 @@ import re
 import time
 from typing import Any, Dict, Optional, Protocol
 
+# Patterns for pulling a table name out of a description-style request,
+# compiled once at import time rather than on every query.
+_TABLE_NAME_PATTERNS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"(?:describe(?: the)? table)\s+([a-zA-Z_][\w\.]*)",
+        r"(?:show\s+schema\s+for|schema\s+for|table\s+schema\s+for)\s+([a-zA-Z_][\w\.]*)",
+        r"(?:columns\s+in|columns\s+of|structure\s+of)\s+([a-zA-Z_][\w\.]*)",
+    )
+)
+
 
 class SchemaDatabaseClient(Protocol):
     """Describe async schema access needed by the service layer."""
@@ -152,16 +163,11 @@ class SchemaService:
         )
         return any(phrase in query for phrase in phrases)
 
-    def _extract_table_name(self, query: str) -> Optional[str]:
+    @staticmethod
+    def _extract_table_name(query: str) -> Optional[str]:
         """Extract the most likely table name fragment from a schema query."""
-        patterns = (
-            r"(?:describe(?: the)? table)\s+([a-zA-Z_][\w\.]*)",
-            r"(?:show\s+schema\s+for|schema\s+for|table\s+schema\s+for)\s+([a-zA-Z_][\w\.]*)",
-            r"(?:columns\s+in|columns\s+of|structure\s+of)\s+([a-zA-Z_][\w\.]*)",
-        )
-
-        for pattern in patterns:
-            match = re.search(pattern, query)
+        for pattern in _TABLE_NAME_PATTERNS:
+            match = pattern.search(query)
             if match:
                 return match.group(1).rstrip("?.!,")
         return None

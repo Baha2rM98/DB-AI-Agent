@@ -16,6 +16,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 logger = logging.getLogger(__name__)
 
+# Write-target extraction patterns, compiled once at import time.
+_INSERT_TABLE_RE = re.compile(r"insert\s+into\s+(\w+)")
+_UPDATE_TABLE_RE = re.compile(r"update\s+(\w+)")
+
 
 class SQLAlchemyDatabaseGateway:
     """Execute SQL queries and inspect schemas through SQLAlchemy."""
@@ -296,16 +300,7 @@ class SQLAlchemyDatabaseGateway:
         if "returning" in query.lower():
             return query
 
-        table_name = None
-        if operation_type == "insert":
-            match = re.search(r"insert\s+into\s+(\w+)", query.lower())
-            if match:
-                table_name = match.group(1)
-        elif operation_type == "update":
-            match = re.search(r"update\s+(\w+)", query.lower())
-            if match:
-                table_name = match.group(1)
-
+        table_name = self._extract_write_table(query, operation_type)
         if not table_name:
             return query
 
@@ -370,10 +365,11 @@ class SQLAlchemyDatabaseGateway:
     @staticmethod
     def _extract_write_table(query: str, operation_type: str) -> Optional[str]:
         """Extract the target table name from an INSERT or UPDATE statement."""
+        lowered = query.lower()
         if operation_type == "insert":
-            match = re.search(r"insert\s+into\s+(\w+)", query.lower())
+            match = _INSERT_TABLE_RE.search(lowered)
         elif operation_type == "update":
-            match = re.search(r"update\s+(\w+)", query.lower())
+            match = _UPDATE_TABLE_RE.search(lowered)
         else:
             match = None
         return match.group(1) if match else None
