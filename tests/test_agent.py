@@ -3,12 +3,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.agent.langgraph_agent import (
-    AgentState,
-    initialize_agent,
-    query_database,
-    summarize_schema,
-)
+from app.agent.langgraph_agent import initialize_agent, query_database
+from app.agent.prompts import summarize_schema
+from app.agent.states import AgentState
 
 
 class TestAgentState:

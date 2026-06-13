@@ -14,85 +14,12 @@ stack until a graph is actually compiled.
 import logging
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from app.agent.prompts import SYSTEM_MESSAGE, USER_PROMPT_TEMPLATE, summarize_schema
+from app.agent.states import AgentState, SqlGeneration
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gemini-1.5-flash"
-
-
-class AgentState(BaseModel):
-    """State passed through the (single-node) LangGraph workflow."""
-
-    query: str
-    database_info: Dict[str, Any] = Field(default_factory=dict)
-    sql_query: str = ""
-    response: str = ""
-    error: str = ""
-
-
-class SqlGeneration(BaseModel):
-    """Structured output contract for the SQL-generation LLM call."""
-
-    sql_query: str = Field(
-        default="",
-        description=(
-            "A single, complete, executable SQL statement with no markdown "
-            "fences. Empty if the request cannot be answered with SQL."
-        ),
-    )
-    explanation: str = Field(
-        default="",
-        description="A concise natural-language description of the query, "
-        "or the reason no query could be produced.",
-    )
-
-
-SYSTEM_MESSAGE = """You are an expert PostgreSQL assistant. Given a database schema and a user request, produce a single executable SQL statement that fulfils it.
-
-Rules:
-1. Output exactly one SQL statement, with no markdown code fences.
-2. Only reference tables and columns that appear in the provided schema.
-3. Prefer read-only SELECT statements unless the user clearly asks to modify data.
-4. If the request cannot be answered with SQL against this schema, return an empty sql_query and explain why in the explanation.
-"""
-
-
-def summarize_schema(database_info: Dict[str, Any]) -> str:
-    """Render a compact, token-efficient schema summary for the prompt.
-
-    Only table names, column names/types, primary keys, and foreign-key links
-    are included - enough for the model to write correct SQL without paying for
-    the full inspector payload (defaults, index metadata, etc.) on every call.
-    """
-    tables = database_info.get("tables", {})
-    if not tables:
-        return "(no tables found)"
-
-    lines = []
-    for qualified_name in sorted(tables):
-        details = tables[qualified_name]
-        columns = details.get("columns", [])
-        column_text = ", ".join(
-            f"{column['name']} {column.get('type', '')}".strip() for column in columns
-        )
-
-        primary_keys = details.get("primary_keys", [])
-        pk_text = f" PK({', '.join(primary_keys)})" if primary_keys else ""
-
-        foreign_keys = details.get("foreign_keys", [])
-        fk_text = ""
-        if foreign_keys:
-            parts = [
-                f"{','.join(fk['constrained_columns'])}->"
-                f"{fk['referred_table']}({','.join(fk['referred_columns'])})"
-                for fk in foreign_keys
-            ]
-            fk_text = f" FK[{'; '.join(parts)}]"
-
-        lines.append(f"{qualified_name}({column_text}){pk_text}{fk_text}")
-
-    return "\n".join(lines)
 
 
 def initialize_agent(
@@ -115,7 +42,7 @@ def initialize_agent(
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", SYSTEM_MESSAGE),
-            ("user", "Database schema:\n{schema}\n\nUser request: {query}"),
+            ("user", USER_PROMPT_TEMPLATE),
         ]
     )
     chain = prompt | structured_llm
