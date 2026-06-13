@@ -7,16 +7,16 @@ from app.integrations.persistent_agent import PersistentLangGraphAgent
 
 @pytest.mark.anyio
 @patch("app.integrations.persistent_agent.create_checkpointer")
-@patch("app.agent.langgraph_agent.initialize_agent")
-async def test_graph_is_compiled_once_and_reused(mock_init, mock_create_checkpointer):
-    """The compiled graph should be built lazily once and shared across queries."""
+@patch("app.agent.sql_agent.SqlAgent")
+async def test_agent_is_built_once_and_reused(mock_sql_agent_cls, mock_create_checkpointer):
+    """The SqlAgent should be built lazily once and shared across queries."""
     mock_create_checkpointer.return_value = (Mock(), None)
 
-    mock_graph = Mock()
-    mock_graph.ainvoke = AsyncMock(
+    mock_agent = Mock()
+    mock_agent.run = AsyncMock(
         return_value={"sql_query": "SELECT 1", "response": "ok", "error": ""}
     )
-    mock_init.return_value = mock_graph
+    mock_sql_agent_cls.return_value = mock_agent
 
     mock_schema_service = Mock()
     mock_schema_service.get_database_schema = AsyncMock(return_value={"tables": {}})
@@ -29,23 +29,23 @@ async def test_graph_is_compiled_once_and_reused(mock_init, mock_create_checkpoi
 
     assert first["sql_query"] == "SELECT 1"
     assert second["sql_query"] == "SELECT 1"
-    # Graph + checkpointer compiled exactly once; only ainvoke repeats.
-    mock_init.assert_called_once()
+    # Agent + checkpointer built exactly once; only run repeats.
+    mock_sql_agent_cls.assert_called_once()
     mock_create_checkpointer.assert_awaited_once()
-    assert mock_graph.ainvoke.await_count == 2
+    assert mock_agent.run.await_count == 2
 
 
 @pytest.mark.anyio
 @patch("app.integrations.persistent_agent.create_checkpointer")
-@patch("app.agent.langgraph_agent.initialize_agent")
-async def test_thread_activity_is_recorded(mock_init, mock_create_checkpointer):
+@patch("app.agent.sql_agent.SqlAgent")
+async def test_thread_activity_is_recorded(mock_sql_agent_cls, mock_create_checkpointer):
     """Executing a query should register the thread and infer its operation."""
     mock_create_checkpointer.return_value = (Mock(), None)
-    mock_graph = Mock()
-    mock_graph.ainvoke = AsyncMock(
+    mock_agent = Mock()
+    mock_agent.run = AsyncMock(
         return_value={"sql_query": "SELECT * FROM actor", "response": "ok"}
     )
-    mock_init.return_value = mock_graph
+    mock_sql_agent_cls.return_value = mock_agent
 
     mock_schema_service = Mock()
     mock_schema_service.get_database_schema = AsyncMock(return_value={"tables": {}})

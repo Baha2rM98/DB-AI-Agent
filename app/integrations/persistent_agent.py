@@ -21,21 +21,18 @@ class PersistentLangGraphAgent:
         self._checkpointer: Any | None = None
         self._checkpointer_context: Any | None = None
         self._checkpointer_lock = asyncio.Lock()
-        self._graph: Any | None = None
-        self._graph_lock = asyncio.Lock()
+        self._sql_agent: Any | None = None
+        self._agent_lock = asyncio.Lock()
         self._thread_registry = ThreadRegistry()
 
     async def execute_query(self, query: str, thread_id: str) -> Dict[str, Any]:
         """Execute a natural-language query using a persisted LangGraph thread."""
-        from app.agent.langgraph_agent import query_database
-
         schema = await self._schema_service.get_database_schema()
-        graph = await self._get_graph()
-        result = await query_database(
+        agent = await self._get_agent()
+        result = await agent.run(
             query=query,
             context_schema=schema,
             thread_id=thread_id,
-            graph=graph,
         )
         await self.record_thread_activity(thread_id, self._extract_operation(result))
         return result
@@ -95,21 +92,21 @@ class PersistentLangGraphAgent:
                 )
         return self._checkpointer
 
-    async def _get_graph(self) -> Any:
-        """Compile the LangGraph workflow once and reuse it across requests."""
-        if self._graph is not None:
-            return self._graph
+    async def _get_agent(self) -> Any:
+        """Build the SqlAgent (LLM client + compiled graph) once and reuse it."""
+        if self._sql_agent is not None:
+            return self._sql_agent
 
-        async with self._graph_lock:
-            if self._graph is None:
-                from app.agent.langgraph_agent import initialize_agent
+        async with self._agent_lock:
+            if self._sql_agent is None:
+                from app.agent.sql_agent import SqlAgent
 
                 checkpointer = await self._get_checkpointer()
-                self._graph = initialize_agent(
-                    checkpointer=checkpointer,
+                self._sql_agent = SqlAgent(
                     model_name=self._settings.llm_model,
+                    checkpointer=checkpointer,
                 )
-        return self._graph
+        return self._sql_agent
 
     @staticmethod
     def _extract_operation(result: Dict[str, Any]) -> str | None:
