@@ -13,20 +13,21 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       LOG_LEVEL: INFO
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      DB_NAME: ${DB_NAME:-db_ai_agent}
+      TARGET_DATABASE_URL: ${TARGET_DATABASE_URL:-}
+      TARGET_DB_HOST: ${TARGET_DB_HOST:-postgres}
+      TARGET_DB_PORT: ${TARGET_DB_PORT:-5432}
+      TARGET_DB_USER: ${TARGET_DB_USER:-postgres}
+      TARGET_DB_PASSWORD: ${TARGET_DB_PASSWORD:-postgres}
+      TARGET_DB_NAME: ${TARGET_DB_NAME:-db_ai_agent}
+      ALLOW_TARGET_WRITES: ${ALLOW_TARGET_WRITES:-false}
+      ALLOW_TARGET_DELETES: ${ALLOW_TARGET_DELETES:-false}
       CHECKPOINTER_BACKEND: ${CHECKPOINTER_BACKEND:-postgres}
       CHECKPOINTER_DATABASE_URL: ${CHECKPOINTER_DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-db_ai_agent}}
       CHECKPOINTER_SQLITE_PATH: ${CHECKPOINTER_SQLITE_PATH:-/app/checkpoints.db}
-      LLM_MODEL: ${LLM_MODEL:-gemini-1.5-pro}
+      LLM_MODEL: ${LLM_MODEL:-gemini-1.5-flash}
     ports:
       - "8000:8000"
-    volumes:
-      - ./app:/app/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
 
   postgres:

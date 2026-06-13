@@ -1,0 +1,10 @@
+# Development overrides, auto-merged by `docker compose` when no explicit
+# `-f` is passed. Adds live-reload and a source bind mount for local dev.
+#
+# Production runs the base stack only and skips these conveniences:
+#   docker compose -f compose.yaml up -d
+services:
+  app:
+    volumes:
+      - ./app:/app/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

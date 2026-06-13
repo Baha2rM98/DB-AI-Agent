@@ -124,15 +124,31 @@ The current stack is defined in:
 Important environment variables:
 
 ```bash
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=sakila
+# Target database: the external database users ask about.
+TARGET_DATABASE_URL=
+TARGET_DB_HOST=localhost
+TARGET_DB_PORT=5432
+TARGET_DB_USER=postgres
+TARGET_DB_PASSWORD=postgres
+TARGET_DB_NAME=sakila
+ALLOW_TARGET_WRITES=false
+ALLOW_TARGET_DELETES=false
+
+# Seconds to cache the inspected target-database schema (0 disables caching).
+SCHEMA_CACHE_TTL_SECONDS=300
+
+# Result-size safety: auto-LIMIT for unbounded SELECTs and a hard
+# materialization cap. Connection pool tuning for concurrent load.
+MAX_SELECT_ROWS=1000
+MAX_RESULT_ROWS=10000
+DB_POOL_SIZE=10
+DB_MAX_OVERFLOW=20
+DB_POOL_RECYCLE=1800
 
 GOOGLE_API_KEY=your_google_api_key
-LLM_MODEL=gemini-1.5-pro
+LLM_MODEL=gemini-1.5-flash
 
+# Internal persistence for LangGraph memory/checkpoints.
 CHECKPOINTER_BACKEND=memory
 # memory | sqlite | postgres
 
@@ -150,17 +166,15 @@ LOG_LEVEL=INFO
 
 Basic app metadata.
 
-### `GET /db_connection`
+### `GET /healthz`
 
-Checks DB connectivity and returns active thread count.
+Lightweight app liveness check for Docker and process monitoring.
 
 Example response:
 
 ```json
 {
-  "status": "connected",
-  "database_connection": "ok",
-  "active_threads": 2
+  "status": "ok"
 }
 ```
 
@@ -191,7 +205,10 @@ Response shape:
   "thread_id": "user-123",
   "context_info": {
     "thread_id": "user-123"
-  }
+  },
+  "sql_query": null,
+  "operation_type": null,
+  "error": null
 }
 ```
 
@@ -213,6 +230,7 @@ The system uses LangGraph checkpoints for conversational persistence.
 
 Current behavior:
 
+- target database schema and user-requested SQL execution use the target database settings
 - durable graph state is handled by LangGraph checkpointers
 - lightweight API-facing thread metadata is tracked separately
 - thread deletion currently clears tracked metadata, not checkpoint rows
@@ -227,14 +245,30 @@ Run the suite with:
 
 Current status after the latest refactor:
 
-- `45 passed, 1 skipped`
+- `67 passed, 1 skipped`
 
 Test files:
 
 - [tests/test_agent.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_agent.py)
 - [tests/test_api.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_api.py)
 - [tests/test_database.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_database.py)
+- [tests/test_persistent_agent.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_persistent_agent.py)
 - [tests/test_query_service.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_query_service.py)
+- [tests/test_schema_service.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_schema_service.py)
+- [tests/test_sql_safety.py](C:/Users/baha2/PycharmProjects/DB-AI-Agent/tests/test_sql_safety.py)
+
+## Performance
+
+The request path is tuned to minimize redundant work:
+
+- the inspected schema is cached (`SCHEMA_CACHE_TTL_SECONDS`) instead of being
+  re-read per request, and is reflected in bulk (one round-trip per schema)
+- the LangGraph workflow is a single SQL-generation call (not a 4-stage chain),
+  compiled once and reused across requests
+- the prompt receives a compact schema summary rather than the full inspector payload
+- logging is non-blocking (queue + background writer) so the event loop never waits on disk
+- SELECTs are auto-bounded (`MAX_SELECT_ROWS`) and result materialization is
+  capped (`MAX_RESULT_ROWS`); the connection pool uses pre-ping and recycling
 
 ## Development Notes
 

@@ -74,6 +74,7 @@ class TestSQLAlchemyDatabaseGateway:
         mock_result.returns_rows = True
         mock_result.keys.return_value = ['id', 'name']
         mock_result.fetchall.return_value = [(1, 'John'), (2, 'Jane')]
+        mock_result.fetchmany.return_value = [(1, 'John'), (2, 'Jane')]
         mock_result.rowcount = 2
 
         mock_conn.execute.return_value = mock_result
@@ -124,6 +125,7 @@ class TestSQLAlchemyDatabaseGateway:
         mock_result.returns_rows = True
         mock_result.keys.return_value = ['id', 'name']
         mock_result.fetchall.return_value = [(1, 'John')]
+        mock_result.fetchmany.return_value = [(1, 'John')]
         mock_result.rowcount = 1
 
         mock_conn.execute.return_value = mock_result
@@ -204,6 +206,7 @@ class TestSQLAlchemyDatabaseGateway:
         mock_result.returns_rows = True
         mock_result.keys.return_value = ['id', 'name']
         mock_result.fetchall.return_value = [(1, 'John')]
+        mock_result.fetchmany.return_value = [(1, 'John')]
         mock_result.rowcount = 1
 
         mock_conn.execute.return_value = mock_result
@@ -266,6 +269,7 @@ class TestSQLAlchemyDatabaseGateway:
         mock_result.returns_rows = True
         mock_result.keys.return_value = ['id', 'name']
         mock_result.fetchall.return_value = [(1, 'John')]
+        mock_result.fetchmany.return_value = [(1, 'John')]
         mock_result.rowcount = 1
         mock_async_connection.execute = AsyncMock(return_value=mock_result)
         mock_async_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_async_connection)
@@ -277,6 +281,154 @@ class TestSQLAlchemyDatabaseGateway:
 
         assert result["success"] is True
         assert result["data"] == [{"id": 1, "name": "John"}]
+
+
+class TestSQLAlchemyDatabaseGatewayInternals:
+    """Tests for lazy engine creation, PK caching, and bulk reflection."""
+
+    @patch('app.integrations.database.create_async_engine')
+    @patch('app.integrations.database.create_engine')
+    def test_sync_engine_is_created_lazily(self, mock_create_engine, mock_create_async_engine):
+        """The sync engine should not be built until first accessed."""
+        connector = SQLAlchemyDatabaseGateway("postgresql://u:p@h/db")
+        mock_create_engine.assert_not_called()
+
+        _ = connector.engine
+        mock_create_engine.assert_called_once()
+
+        _ = connector.engine
+        mock_create_engine.assert_called_once()  # cached, not rebuilt
+
+    @pytest.mark.anyio
+    @patch('app.integrations.database.create_async_engine')
+    @patch('app.integrations.database.create_engine')
+    async def test_returning_clause_uses_cached_pks(
+        self, mock_create_engine, mock_create_async_engine
+    ):
+        """A cached primary key should produce RETURNING without a DB round-trip."""
+        connector = SQLAlchemyDatabaseGateway("postgresql://u:p@h/db")
+        connector._pk_cache["actor"] = ["actor_id"]
+
+        out = await connector._aadd_returning_clause(
+            "INSERT INTO actor (first_name) VALUES ('x')", "insert"
+        )
+
+        assert out.endswith("RETURNING actor_id")
+        connector.async_engine.connect.assert_not_called()
+
+    @pytest.mark.anyio
+    @patch('app.integrations.database.create_async_engine')
+    @patch('app.integrations.database.create_engine')
+    async def test_returning_clause_falls_back_to_star(
+        self, mock_create_engine, mock_create_async_engine
+    ):
+        """A table with no cached primary key falls back to RETURNING *."""
+        connector = SQLAlchemyDatabaseGateway("postgresql://u:p@h/db")
+        connector._pk_cache["logs"] = []
+
+        out = await connector._aadd_returning_clause(
+            "INSERT INTO logs (msg) VALUES ('x')", "insert"
+        )
+
+        assert out.endswith("RETURNING *")
+        connector.async_engine.connect.assert_not_called()
+
+    def test_assemble_table_schema_shape(self):
+        """Bulk-reflection assembly must match the per-table inspector shape."""
+        result = SQLAlchemyDatabaseGateway._assemble_table_schema(
+            "public",
+            "actor",
+            [{"name": "actor_id", "type": "INTEGER", "nullable": False, "default": None}],
+            {"constrained_columns": ["actor_id"]},
+            [
+                {
+                    "constrained_columns": ["address_id"],
+                    "referred_schema": "public",
+                    "referred_table": "address",
+                    "referred_columns": ["address_id"],
+                }
+            ],
+            [{"name": "idx_actor_last_name"}],
+        )
+
+        assert result["schema"] == "public"
+        assert result["table_name"] == "actor"
+        assert result["columns"][0] == {
+            "name": "actor_id",
+            "type": "INTEGER",
+            "nullable": False,
+            "default": "None",
+        }
+        assert result["primary_keys"] == ["actor_id"]
+        assert result["foreign_keys"][0]["referred_table"] == "address"
+        assert result["indices"] == [{"name": "idx_actor_last_name"}]
+
+    @patch('app.integrations.database.create_async_engine')
+    @patch('app.integrations.database.create_engine')
+    def test_pool_settings_passed_to_async_engine(
+        self, mock_create_engine, mock_create_async_engine
+    ):
+        """Pool tuning should reach the async engine factory."""
+        SQLAlchemyDatabaseGateway(
+            "postgresql://u:p@h/db",
+            pool_size=7,
+            max_overflow=3,
+            pool_recycle=60,
+        )
+
+        _, kwargs = mock_create_async_engine.call_args
+        assert kwargs["pool_size"] == 7
+        assert kwargs["max_overflow"] == 3
+        assert kwargs["pool_recycle"] == 60
+        assert kwargs["pool_pre_ping"] is True
+
+    @patch('app.integrations.database.create_async_engine')
+    @patch('app.integrations.database.create_engine')
+    def test_select_is_capped_at_max_result_rows(
+        self, mock_create_engine, mock_create_async_engine
+    ):
+        """A SELECT should fetch at most max_result_rows rows."""
+        mock_engine = Mock()
+        mock_conn = Mock()
+        mock_result = Mock()
+        mock_result.returns_rows = True
+        mock_result.keys.return_value = ['id']
+        mock_result.fetchmany.return_value = [(1,), (2,)]
+        mock_result.rowcount = 2
+        mock_conn.execute.return_value = mock_result
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
+        mock_create_engine.return_value = mock_engine
+
+        connector = SQLAlchemyDatabaseGateway("test://connection", max_result_rows=2)
+        result = connector.execute_query("SELECT * FROM big_table")
+
+        assert len(result["data"]) == 2
+        mock_result.fetchmany.assert_called_once_with(2)
+        mock_result.fetchall.assert_not_called()
+
+    @patch('app.integrations.database.create_async_engine')
+    @patch('app.integrations.database.create_engine')
+    def test_zero_cap_uses_fetchall(self, mock_create_engine, mock_create_async_engine):
+        """A zero cap disables the bound and reads the full result set."""
+        mock_engine = Mock()
+        mock_conn = Mock()
+        mock_result = Mock()
+        mock_result.returns_rows = True
+        mock_result.keys.return_value = ['id']
+        mock_result.fetchall.return_value = [(1,)]
+        mock_result.rowcount = 1
+        mock_conn.execute.return_value = mock_result
+        mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
+        mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
+        mock_create_engine.return_value = mock_engine
+
+        connector = SQLAlchemyDatabaseGateway("test://connection", max_result_rows=0)
+        result = connector.execute_query("SELECT * FROM small_table")
+
+        assert len(result["data"]) == 1
+        mock_result.fetchall.assert_called_once()
+        mock_result.fetchmany.assert_not_called()
 
 
 @pytest.mark.integration

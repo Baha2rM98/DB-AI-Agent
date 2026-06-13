@@ -2,15 +2,14 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.dependencies import get_database_gateway, get_query_service
+from app.api.dependencies import get_query_service
 from app.api.schemas import (
-    HealthResponse,
+    HealthzResponse,
     QueryRequest,
     QueryResponse,
     RootResponse,
     ThreadInfoResponse,
 )
-from app.integrations.database import SQLAlchemyDatabaseGateway
 from app.services.query_service import QueryService
 
 router = APIRouter()
@@ -26,20 +25,10 @@ async def read_root() -> RootResponse:
     )
 
 
-@router.get("/db_connection", response_model=HealthResponse, tags=["health"])
-async def health_check(
-    database_gateway: SQLAlchemyDatabaseGateway = Depends(get_database_gateway),
-    query_service: QueryService = Depends(get_query_service),
-) -> HealthResponse:
-    """Verify database connectivity for the running application."""
-    if not await database_gateway.atest_connection():
-        raise HTTPException(status_code=503, detail="Database connection failed")
-
-    return HealthResponse(
-        status="connected",
-        database_connection="ok",
-        active_threads=len(query_service.get_active_threads()),
-    )
+@router.get("/healthz", response_model=HealthzResponse, tags=["health"])
+async def healthz() -> HealthzResponse:
+    """Return a lightweight liveness signal for container health checks."""
+    return HealthzResponse(status="ok")
 
 
 @router.post("/query", response_model=QueryResponse, tags=["query"])
@@ -64,6 +53,9 @@ async def process_query(
         affected_rows=result.affected_rows,
         thread_id=result.thread_id,
         context_info=result.context_info,
+        sql_query=result.sql_query,
+        operation_type=result.operation_type,
+        error=result.error,
     )
 
 
@@ -72,7 +64,7 @@ async def get_active_threads(
     query_service: QueryService = Depends(get_query_service),
 ) -> list[str]:
     """Return the active conversation thread identifiers."""
-    return query_service.get_active_threads()
+    return await query_service.get_active_threads()
 
 
 @router.get("/threads/{thread_id}", response_model=ThreadInfoResponse, tags=["query"])
@@ -81,7 +73,7 @@ async def get_thread_info(
     query_service: QueryService = Depends(get_query_service),
 ) -> ThreadInfoResponse:
     """Return metadata for a persisted conversation thread."""
-    thread_info = query_service.get_thread_info(thread_id)
+    thread_info = await query_service.get_thread_info(thread_id)
     if "error" in thread_info:
         raise HTTPException(status_code=404, detail=thread_info["error"])
     return _build_thread_response(thread_info)
@@ -93,7 +85,7 @@ async def clear_thread(
     query_service: QueryService = Depends(get_query_service),
 ) -> dict:
     """Delete metadata for a conversation thread."""
-    if not query_service.clear_thread(thread_id):
+    if not await query_service.clear_thread(thread_id):
         raise HTTPException(status_code=404, detail=f"Thread {thread_id} not found")
     return {"message": f"Thread {thread_id} cleared successfully"}
 

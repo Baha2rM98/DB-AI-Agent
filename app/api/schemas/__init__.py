@@ -13,12 +13,10 @@ class RootResponse(BaseModel):
     description: str
 
 
-class HealthResponse(BaseModel):
-    """Health-check response describing database connectivity."""
+class HealthzResponse(BaseModel):
+    """Lightweight process health response."""
 
     status: str
-    database_connection: str
-    active_threads: int = 0
 
 
 class QueryRequest(BaseModel):
@@ -43,6 +41,9 @@ class QueryResponse(BaseModel):
     affected_rows: Optional[int] = None
     thread_id: Optional[str] = None
     context_info: Optional[Dict[str, Any]] = None
+    sql_query: Optional[str] = None
+    operation_type: Optional[str] = None
+    error: Optional[str] = None
 
 
 class ThreadInfoResponse(BaseModel):

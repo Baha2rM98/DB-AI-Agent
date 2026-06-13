@@ -3,246 +3,165 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.agent.langgraph_agent import AgentState, initialize_agent, query_database
+from app.agent.langgraph_agent import (
+    AgentState,
+    initialize_agent,
+    query_database,
+    summarize_schema,
+)
 
 
 class TestAgentState:
-    """Test cases for AgentState model."""
+    """Test cases for the AgentState model."""
 
-    def test_agent_state_initialization(self):
-        """Test AgentState initialization with defaults."""
+    def test_agent_state_defaults(self):
+        """AgentState should default every field but the query."""
         state = AgentState(query="test query")
 
         assert state.query == "test query"
-        assert state.context == {}
         assert state.database_info == {}
-        assert state.current_plan == []
-        assert state.execution_result == {}
+        assert state.sql_query == ""
         assert state.response == ""
         assert state.error == ""
 
     def test_agent_state_with_values(self):
-        """Test AgentState initialization with custom values."""
-        context = {"test": "value"}
-        db_info = {"tables": ["test_table"]}
-
+        """AgentState should accept explicit values."""
         state = AgentState(
             query="test query",
-            context=context,
-            database_info=db_info,
-            current_plan=["select"],
-            response="test response",
+            database_info={"tables": {"actor": {}}},
+            sql_query="SELECT 1",
+            response="done",
         )
 
-        assert state.query == "test query"
-        assert state.context == context
-        assert state.database_info == db_info
-        assert state.current_plan == ["select"]
-        assert state.response == "test response"
+        assert state.database_info == {"tables": {"actor": {}}}
+        assert state.sql_query == "SELECT 1"
+        assert state.response == "done"
 
 
-class TestLangGraphAgent:
-    """Test cases for async LangGraph agent functionality."""
+class TestSummarizeSchema:
+    """The prompt schema summary should be compact but informative."""
 
-    @patch("app.agent.langgraph_agent.ChatGoogleGenerativeAI")
-    def test_initialize_agent(self, mock_gemini):
-        """Test async agent initialization."""
-        mock_llm = Mock()
-        mock_gemini.return_value = mock_llm
-
-        agent = initialize_agent()
-
-        assert agent is not None
-        mock_gemini.assert_called_once_with(
-            model="gemini-1.5-pro",
-            temperature=0,
-            convert_system_message_to_human=True,
-        )
-
-    @pytest.mark.anyio
-    @patch("app.agent.langgraph_agent.initialize_agent")
-    async def test_query_database_success(self, mock_init_agent, mock_agent_result):
-        """Test successful async query execution."""
-        mock_agent = Mock()
-        mock_agent.ainvoke = AsyncMock(return_value=mock_agent_result)
-        mock_init_agent.return_value = mock_agent
-
-        database_info = {
-            "database_name": "test_db",
-            "tables": {"actor": {"columns": []}},
-            "summary": {},
+    def test_summary_includes_columns_pks_and_fks(self):
+        info = {
+            "tables": {
+                "public.rental": {
+                    "columns": [
+                        {"name": "rental_id", "type": "INTEGER"},
+                        {"name": "customer_id", "type": "INTEGER"},
+                    ],
+                    "primary_keys": ["rental_id"],
+                    "foreign_keys": [
+                        {
+                            "constrained_columns": ["customer_id"],
+                            "referred_table": "customer",
+                            "referred_columns": ["customer_id"],
+                        }
+                    ],
+                }
+            }
         }
-        result = await query_database("Show me all actors", database_info)
 
-        assert isinstance(result, dict)
-        assert "response" in result
+        summary = summarize_schema(info)
+
+        assert "public.rental" in summary
+        assert "rental_id INTEGER" in summary
+        assert "PK(rental_id)" in summary
+        assert "customer_id->customer(customer_id)" in summary
+
+    def test_summary_handles_empty_schema(self):
+        assert summarize_schema({"tables": {}}) == "(no tables found)"
+
+
+class TestInitializeAgent:
+    """The agent should compile from a single SQL-generation node."""
+
+    @patch("langchain_google_genai.ChatGoogleGenerativeAI")
+    def test_initialize_agent_builds_structured_single_call(self, mock_gemini):
+        mock_llm = Mock()
+        mock_gemini.return_value = mock_llm
+
+        agent = initialize_agent(model_name="gemini-1.5-flash")
+
+        assert agent is not None
+        mock_gemini.assert_called_once_with(model="gemini-1.5-flash", temperature=0)
+        mock_llm.with_structured_output.assert_called_once()
+
+
+class TestQueryDatabase:
+    """query_database normalizes graph output for the service layer."""
 
     @pytest.mark.anyio
-    @patch("app.agent.langgraph_agent.initialize_agent")
-    async def test_query_database_with_agent_state_result(self, mock_init_agent):
-        """Test query_database when agent returns AgentState."""
-        mock_agent_state = AgentState(
-            query="test",
-            response="Test response",
-            context={"test": "context"},
-            execution_result={"success": True},
+    async def test_uses_provided_graph_without_compiling(self):
+        graph = Mock()
+        graph.ainvoke = AsyncMock(
+            return_value={"sql_query": "SELECT 1", "response": "ok", "error": ""}
         )
 
-        mock_agent = Mock()
-        mock_agent.ainvoke = AsyncMock(return_value=mock_agent_state)
-        mock_init_agent.return_value = mock_agent
+        result = await query_database("q", {"tables": {}}, thread_id="t", graph=graph)
 
-        result = await query_database("test query", {})
-
-        assert result["response"] == "Test response"
-        assert result["context"] == {"test": "context"}
-        assert result["execution_details"] == {"success": True}
+        assert result["sql_query"] == "SELECT 1"
+        assert result["agent_response"] == "ok"
+        assert result["response"] == "ok"
+        graph.ainvoke.assert_awaited_once()
 
     @pytest.mark.anyio
     @patch("app.agent.langgraph_agent.initialize_agent")
-    async def test_query_database_exception_handling(self, mock_init_agent):
-        """Test async query_database exception handling."""
-        mock_agent = Mock()
-        mock_agent.ainvoke = AsyncMock(side_effect=Exception("Test error"))
-        mock_init_agent.return_value = mock_agent
+    async def test_compiles_a_graph_when_none_provided(self, mock_init):
+        graph = Mock()
+        graph.ainvoke = AsyncMock(return_value={"sql_query": "SELECT 2", "response": "ok"})
+        mock_init.return_value = graph
 
-        result = await query_database("test query", {})
+        result = await query_database("q", {"tables": {}})
 
-        assert "response" in result
-        assert "error" in result["context"]
-        assert "Test error" in result["response"]
+        mock_init.assert_called_once()
+        assert result["sql_query"] == "SELECT 2"
 
     @pytest.mark.anyio
-    @patch("app.agent.langgraph_agent.initialize_agent")
-    async def test_query_database_unexpected_result_type(self, mock_init_agent):
-        """Test query_database with unexpected result type."""
-        mock_agent = Mock()
-        mock_agent.ainvoke = AsyncMock(return_value="unexpected string result")
-        mock_init_agent.return_value = mock_agent
+    async def test_normalizes_agent_state_object(self):
+        graph = Mock()
+        graph.ainvoke = AsyncMock(
+            return_value=AgentState(query="q", sql_query="SELECT 3", response="done")
+        )
 
-        result = await query_database("test query", {})
+        result = await query_database("q", {"tables": {}}, graph=graph)
+
+        assert result["sql_query"] == "SELECT 3"
+        assert result["agent_response"] == "done"
+
+    @pytest.mark.anyio
+    async def test_handles_unexpected_result_type_gracefully(self):
+        graph = Mock()
+        graph.ainvoke = AsyncMock(return_value="unexpected string")
+
+        result = await query_database("q", {"tables": {}}, graph=graph)
 
         assert isinstance(result, dict)
-        assert "response" in result
-        assert "could not process" in result["response"].lower()
+        assert result["sql_query"] == ""
+        assert result["agent_response"] == ""
 
+    @pytest.mark.anyio
+    async def test_exception_is_reported_without_sql(self):
+        graph = Mock()
+        graph.ainvoke = AsyncMock(side_effect=Exception("boom"))
 
-class TestAgentWorkflowNodes:
-    """Smoke tests for workflow construction."""
+        result = await query_database("q", {"tables": {}}, graph=graph)
 
-    @patch("app.agent.langgraph_agent.ChatGoogleGenerativeAI")
-    def test_understand_query_node(self, mock_gemini):
-        """Test workflow initialization for understanding queries."""
-        mock_llm = Mock()
-        mock_gemini.return_value = mock_llm
-        agent = initialize_agent()
-        initial_state = AgentState(
-            query="Show me all actors",
-            database_info={"actor": {"columns": []}},
-        )
-        assert agent is not None
-        assert initial_state.query == "Show me all actors"
-
-    @patch("app.agent.langgraph_agent.ChatGoogleGenerativeAI")
-    def test_plan_execution_node(self, mock_gemini):
-        """Test workflow initialization for planning."""
-        mock_llm = Mock()
-        mock_gemini.return_value = mock_llm
-        agent = initialize_agent()
-        assert agent is not None
-
-    @patch("app.agent.langgraph_agent.ChatGoogleGenerativeAI")
-    def test_execute_plan_node(self, mock_gemini):
-        """Test workflow initialization for execution."""
-        mock_llm = Mock()
-        mock_gemini.return_value = mock_llm
-        agent = initialize_agent()
-        assert agent is not None
-
-    @patch("app.agent.langgraph_agent.ChatGoogleGenerativeAI")
-    def test_formulate_response_node(self, mock_gemini):
-        """Test workflow initialization for response generation."""
-        mock_llm = Mock()
-        mock_gemini.return_value = mock_llm
-        agent = initialize_agent()
-        assert agent is not None
-
-    @patch("app.agent.langgraph_agent.ChatGoogleGenerativeAI")
-    def test_handle_error_node(self, mock_gemini):
-        """Test workflow initialization for error handling."""
-        mock_llm = Mock()
-        mock_gemini.return_value = mock_llm
-        agent = initialize_agent()
-        assert agent is not None
-
-
-@pytest.mark.parametrize(
-    "query,expected_operation",
-    [
-        ("Show me all actors", "select"),
-        ("Find actors named John", "select"),
-        ("How many films are there?", "select"),
-        ("List all customers", "select"),
-    ],
-)
-def test_query_operation_detection(query, expected_operation):
-    """Test that representative query categories still make sense."""
-    assert expected_operation == "select"
-
-
-class TestAgentStateMachine:
-    """Test the state machine transitions."""
-
-    def test_state_transitions_success_path(self):
-        """Test successful state transitions through the workflow."""
-        state = AgentState(query="test query")
-        state.context["understood_intent"] = "Select all actors"
-        assert "understood_intent" in state.context
-
-        state.context["execution_plan"] = "SELECT * FROM actor"
-        assert "execution_plan" in state.context
-
-        state.execution_result = {"success": True, "data": []}
-        assert state.execution_result["success"] is True
-
-        state.response = "I found 0 actors"
-        assert state.response != ""
-
-    def test_state_transitions_error_path(self):
-        """Test error state transitions."""
-        state = AgentState(query="test query")
-        state.error = "Failed to understand query"
-        assert state.error != ""
-        assert state.response == ""
+        assert result["sql_query"] == ""
+        assert "boom" in result["agent_response"]
+        assert result["context"]["error"] == "boom"
 
 
 @pytest.mark.slow
 class TestAgentPerformance:
-    """Performance tests for the agent."""
+    """Lightweight repeated-invocation checks against a mocked graph."""
 
     @pytest.mark.anyio
-    @patch("app.agent.langgraph_agent.initialize_agent")
-    async def test_agent_response_time(self, mock_init_agent):
-        """Test that the async agent responds within reasonable time."""
-        mock_agent = Mock()
-        mock_agent.ainvoke = AsyncMock(return_value={"response": "test response"})
-        mock_init_agent.return_value = mock_agent
+    async def test_repeated_invocation(self):
+        graph = Mock()
+        graph.ainvoke = AsyncMock(return_value={"sql_query": "SELECT 1", "response": "ok"})
 
         start_time = time.time()
-        result = await query_database("test query", {})
-        end_time = time.time()
-
-        assert (end_time - start_time) < 5.0
-        assert result is not None
-
-    @pytest.mark.anyio
-    @patch("app.agent.langgraph_agent.initialize_agent")
-    async def test_agent_memory_usage(self, mock_init_agent):
-        """Test repeated async query execution."""
-        mock_agent = Mock()
-        mock_agent.ainvoke = AsyncMock(return_value={"response": "test response"})
-        mock_init_agent.return_value = mock_agent
-
-        for i in range(10):
-            result = await query_database(f"test query {i}", {})
-            assert result is not None
+        for index in range(10):
+            result = await query_database(f"query {index}", {"tables": {}}, graph=graph)
+            assert result["sql_query"] == "SELECT 1"
+        assert (time.time() - start_time) < 5.0
