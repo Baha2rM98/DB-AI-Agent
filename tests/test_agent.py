@@ -3,12 +3,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.agent.langgraph_agent import (
-    AgentState,
-    initialize_agent,
-    query_database,
-    summarize_schema,
-)
+from app.agent.prompts import summarize_schema
+from app.agent.sql_agent import SqlAgent
+from app.agent.states import AgentState
 
 
 class TestAgentState:
@@ -72,49 +69,38 @@ class TestSummarizeSchema:
         assert summarize_schema({"tables": {}}) == "(no tables found)"
 
 
-class TestInitializeAgent:
+class TestSqlAgentConstruction:
     """The agent should compile from a single SQL-generation node."""
 
     @patch("langchain_google_genai.ChatGoogleGenerativeAI")
-    def test_initialize_agent_builds_structured_single_call(self, mock_gemini):
+    def test_constructor_builds_structured_single_call(self, mock_gemini):
         mock_llm = Mock()
         mock_gemini.return_value = mock_llm
 
-        agent = initialize_agent(model_name="gemini-1.5-flash")
+        agent = SqlAgent(model_name="gemini-1.5-flash")
 
         assert agent is not None
         mock_gemini.assert_called_once_with(model="gemini-1.5-flash", temperature=0)
         mock_llm.with_structured_output.assert_called_once()
 
 
-class TestQueryDatabase:
-    """query_database normalizes graph output for the service layer."""
+class TestSqlAgentRun:
+    """SqlAgent.run normalizes graph output for the service layer."""
 
     @pytest.mark.anyio
-    async def test_uses_provided_graph_without_compiling(self):
+    async def test_uses_injected_graph(self):
         graph = Mock()
         graph.ainvoke = AsyncMock(
             return_value={"sql_query": "SELECT 1", "response": "ok", "error": ""}
         )
 
-        result = await query_database("q", {"tables": {}}, thread_id="t", graph=graph)
+        agent = SqlAgent(compiled_graph=graph)
+        result = await agent.run("q", {"tables": {}}, thread_id="t")
 
         assert result["sql_query"] == "SELECT 1"
         assert result["agent_response"] == "ok"
         assert result["response"] == "ok"
         graph.ainvoke.assert_awaited_once()
-
-    @pytest.mark.anyio
-    @patch("app.agent.langgraph_agent.initialize_agent")
-    async def test_compiles_a_graph_when_none_provided(self, mock_init):
-        graph = Mock()
-        graph.ainvoke = AsyncMock(return_value={"sql_query": "SELECT 2", "response": "ok"})
-        mock_init.return_value = graph
-
-        result = await query_database("q", {"tables": {}})
-
-        mock_init.assert_called_once()
-        assert result["sql_query"] == "SELECT 2"
 
     @pytest.mark.anyio
     async def test_normalizes_agent_state_object(self):
@@ -123,7 +109,8 @@ class TestQueryDatabase:
             return_value=AgentState(query="q", sql_query="SELECT 3", response="done")
         )
 
-        result = await query_database("q", {"tables": {}}, graph=graph)
+        agent = SqlAgent(compiled_graph=graph)
+        result = await agent.run("q", {"tables": {}})
 
         assert result["sql_query"] == "SELECT 3"
         assert result["agent_response"] == "done"
@@ -133,7 +120,8 @@ class TestQueryDatabase:
         graph = Mock()
         graph.ainvoke = AsyncMock(return_value="unexpected string")
 
-        result = await query_database("q", {"tables": {}}, graph=graph)
+        agent = SqlAgent(compiled_graph=graph)
+        result = await agent.run("q", {"tables": {}})
 
         assert isinstance(result, dict)
         assert result["sql_query"] == ""
@@ -144,7 +132,8 @@ class TestQueryDatabase:
         graph = Mock()
         graph.ainvoke = AsyncMock(side_effect=Exception("boom"))
 
-        result = await query_database("q", {"tables": {}}, graph=graph)
+        agent = SqlAgent(compiled_graph=graph)
+        result = await agent.run("q", {"tables": {}})
 
         assert result["sql_query"] == ""
         assert "boom" in result["agent_response"]
@@ -160,8 +149,9 @@ class TestAgentPerformance:
         graph = Mock()
         graph.ainvoke = AsyncMock(return_value={"sql_query": "SELECT 1", "response": "ok"})
 
+        agent = SqlAgent(compiled_graph=graph)
         start_time = time.time()
         for index in range(10):
-            result = await query_database(f"query {index}", {"tables": {}}, graph=graph)
+            result = await agent.run(f"query {index}", {"tables": {}})
             assert result["sql_query"] == "SELECT 1"
         assert (time.time() - start_time) < 5.0
